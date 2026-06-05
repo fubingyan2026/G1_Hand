@@ -37,27 +37,25 @@ sdk_app_src(user_app/app_main.c)
 sdk_app_src(user_app/tasks/uart_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
 
-# --- BSP 层 (drivers/bsp) ---
-sdk_app_src(drivers/bsp/bsp_uart.c)
-sdk_app_src(drivers/bsp/bsp_gpio.c)
+# --- 服务层 (service) ---
+sdk_app_src(service/led.c)
+
+# --- 中间件：数据结构与算法 (middlewares/utils) ---
+sdk_app_src(middlewares/utils/kfifo.c)
+sdk_app_src(middlewares/utils/clist.c)
+# --- 中间件：有限状态机 (middlewares/fsm) ---
+sdk_app_src(middlewares/fsm/fsm.c)
+# --- 中间件：协议工具 (middlewares/protocol_tools) ---
+sdk_app_src(middlewares/protocol_tools/protocol_parser.c)
+sdk_app_src(middlewares/protocol_tools/protocol_packer.c)
 
 # --- 设备驱动层 (drivers/device_driver) ---
 sdk_app_src(drivers/device_driver/drv_rs485.c)
 sdk_app_src(drivers/device_driver/drv_led.c)
 
-# --- 中间件：数据结构与算法 (middlewares/utils) ---
-sdk_app_src(middlewares/utils/kfifo.c)
-sdk_app_src(middlewares/utils/clist.c)
-
-# --- 中间件：有限状态机 (middlewares/fsm) ---
-sdk_app_src(middlewares/fsm/fsm.c)
-
-# --- 服务层 (service) ---
-sdk_app_src(service/led.c)
-
-# --- 中间件：协议工具 (middlewares/protocol_tools) ---
-sdk_app_src(middlewares/protocol_tools/protocol_parser.c)
-sdk_app_src(middlewares/protocol_tools/protocol_packer.c)
+# --- BSP 层 (drivers/bsp) ---
+sdk_app_src(drivers/bsp/bsp_uart.c)
+sdk_app_src(drivers/bsp/bsp_gpio.c)
 
 # ============================================================================
 # 头文件搜索路径
@@ -70,10 +68,6 @@ target_include_directories(app PRIVATE
     # 应用层
     ${CMAKE_CURRENT_SOURCE_DIR}/user_app/tasks
 
-    # BSP 层
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/bsp
-    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/device_driver
-
     # 服务层
     ${CMAKE_CURRENT_SOURCE_DIR}/service
 
@@ -81,6 +75,10 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/fsm
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/protocol_tools
+
+    # BSP 层
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/device_driver
+    ${CMAKE_CURRENT_SOURCE_DIR}/drivers/bsp
 )
 
 # ============================================================================
