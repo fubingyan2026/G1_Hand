@@ -6,7 +6,7 @@
 
 /**
  * @file    drv_rs485.c
- * @brief   RS-485 半双工驱动实现 — 中断驱动的 TX 队列 + DMA 环形 RX
+ * @brief   RS-485 半双工驱动实现 — 零拷贝 DMA 发送 + DMA 环形 RX
  */
 
 #include "drv_rs485.h"
@@ -28,11 +28,12 @@
 #define IOC_PB24 56
 #define IOC_PB25 57
 #define IOC_PB26 58
-#define IOC_PB29 61
-#define IOC_PB30 62
-#define IOC_PB31 63
+#define IOC_PC05 69
+#define IOC_PC06 70
+#define IOC_PC07 71
 
 #define GPIO_PORT_PB 1
+#define GPIO_PORT_PC 2 /* GPIO_DO_GPIOC */
 
 #define PB00_PIN 0
 #define PB01_PIN 1
@@ -40,23 +41,21 @@
 #define PB24_PIN 24
 #define PB25_PIN 25
 #define PB26_PIN 26
-#define PB29_PIN 29
-#define PB30_PIN 30
-#define PB31_PIN 31
+#define PC05_PIN 5
+#define PC06_PIN 6
+#define PC07_PIN 7
 
 /* --------------------------------------------------------------------------
  * DMA 通道分配
  * -------------------------------------------------------------------------- */
 
-#define DMA_CH_UART15_TX 2
-#define DMA_CH_UART15_RX 3
+#define DMA_CH_UART1_TX  0
+#define DMA_CH_UART1_RX  1
 #define DMA_CH_UART14_TX 4
 #define DMA_CH_UART14_RX 5
-#define DMA_CH_UART8_TX 6
-#define DMA_CH_UART8_RX 7
+#define DMA_CH_UART8_TX  6
+#define DMA_CH_UART8_RX  7
 
-/* 每次从 TX 队列中取出的最大字节数 */
-#define RS485_TX_CHUNK_SIZE 64U
 
 /* --------------------------------------------------------------------------
  * 端口上下文
@@ -74,11 +73,10 @@ typedef struct {
     kfifo_t rx_fifo;
     rs485_rx_callback_t rx_cb;
 
-    /* 发送 — 中断驱动队列 */
-    uint8_t tx_ring_storage[RS485_TX_RING_BUF_SIZE];
-    kfifo_t tx_fifo;
-    bool tx_running; /* DMA 正在运行或队列非空 */
-    uint8_t tx_chunk[RS485_TX_CHUNK_SIZE]; /* 出队暂存 */
+    /* 发送 — 零拷贝 DMA */
+    const uint8_t *tx_buf;   /* 当前 DMA 源缓冲区（NULL = 空闲） */
+    uint32_t tx_len;          /* 当前传输字节数 */
+    bool tx_busy;             /* DMA 传输进行中 */
 } rs485_port_ctx_t;
 
 static rs485_port_ctx_t s_ports[RS485_PORT_MAX];
@@ -101,29 +99,30 @@ void rs485_init(rs485_port_t port)
 
     rs485_port_ctx_t* ctx = &s_ports[port];
 
-    /* 初始化接收 / 发送环形缓冲区 */
+    /* 初始化接收环形缓冲区 */
     kfifo_init(&ctx->rx_fifo, ctx->rx_ring_storage, RS485_RX_RING_BUF_SIZE, NULL);
-    kfifo_init(&ctx->tx_fifo, ctx->tx_ring_storage, RS485_TX_RING_BUF_SIZE, NULL);
-    ctx->tx_running = false;
+    ctx->tx_busy = false;
+    ctx->tx_buf = NULL;
+    ctx->tx_len = 0;
 
     /* 按端口配置 UART */
     switch (port) {
-    case RS485_PORT_MOTOR1: /* UART15: TX=PB31, RX=PB30, DE=PB29 */
-        ctx->uart_cfg.base = HPM_UART15;
+    case RS485_PORT_MOTOR1: /* UART1: TX=PC7, RX=PC6, DE=PC5 */
+        ctx->uart_cfg.base = HPM_UART1;
         ctx->uart_cfg.baudrate = RS485_DEFAULT_BAUDRATE;
-        ctx->uart_cfg.clk_name = clock_uart15;
-        ctx->uart_cfg.irq_num = IRQn_UART15;
-        ctx->uart_cfg.tx_ioc_pad = IOC_PB31;
-        ctx->uart_cfg.tx_ioc_func = IOC_PB31_FUNC_CTL_UART15_TXD;
-        ctx->uart_cfg.rx_ioc_pad = IOC_PB30;
-        ctx->uart_cfg.rx_ioc_func = IOC_PB30_FUNC_CTL_UART15_RXD;
-        ctx->uart_cfg.tx_dma_ch = DMA_CH_UART15_TX;
-        ctx->uart_cfg.rx_dma_ch = DMA_CH_UART15_RX;
-        ctx->uart_cfg.tx_dma_req = HPM_DMA_SRC_UART15_TX;
-        ctx->uart_cfg.rx_dma_req = HPM_DMA_SRC_UART15_RX;
+        ctx->uart_cfg.clk_name = clock_uart1;
+        ctx->uart_cfg.irq_num = IRQn_UART1;
+        ctx->uart_cfg.tx_ioc_pad = IOC_PC07;
+        ctx->uart_cfg.tx_ioc_func = IOC_PC07_FUNC_CTL_UART1_TXD;
+        ctx->uart_cfg.rx_ioc_pad = IOC_PC06;
+        ctx->uart_cfg.rx_ioc_func = IOC_PC06_FUNC_CTL_UART1_RXD;
+        ctx->uart_cfg.tx_dma_ch = DMA_CH_UART1_TX;
+        ctx->uart_cfg.rx_dma_ch = DMA_CH_UART1_RX;
+        ctx->uart_cfg.tx_dma_req = HPM_DMA_SRC_UART1_TX;
+        ctx->uart_cfg.rx_dma_req = HPM_DMA_SRC_UART1_RX;
         ctx->de_port = HPM_GPIO0;
-        ctx->de_port_idx = GPIO_PORT_PB;
-        ctx->de_pin_idx = PB29_PIN;
+        ctx->de_port_idx = GPIO_PORT_PC;
+        ctx->de_pin_idx = PC05_PIN;
         break;
 
     case RS485_PORT_MOTOR2: /* UART14: TX=PB24, RX=PB25, DE=PB26 */
@@ -175,7 +174,7 @@ void rs485_init(rs485_port_t port)
     ctx->uart_cfg.rx_callback = rs485_rx_callback;
     ctx->rx_cb = NULL;
 
-    /* 注册 TX 完成回调（HDMA ISR → 链式出队） */
+    /* 注册 TX 完成回调（HDMA ISR → 拉低 DE） */
     bsp_uart_set_tx_callback(&ctx->uart_cfg, rs485_tx_dma_done,
         (void*)(uintptr_t)port);
 
@@ -242,94 +241,60 @@ uint32_t rs485_rx_read(rs485_port_t port, uint8_t* out, uint32_t max_len)
 }
 
 /* ======================================================================
- * 发送 — 中断驱动队列
+ * 发送 — 零拷贝 DMA（无软件队列）
  * ====================================================================== */
 
 /**
- * @brief 从 TX 队列取数据并启动 DMA（内部函数）
+ * @brief HDMA ISR 回调：DMA 发送完成
  *
- * 调用时机：(1) 用户第一次调用 rs485_send_dma 时
- *          (2) 上一段 DMA 完成后 HDMA ISR 回调
+ * 收尾：flush UART 移位寄存器 + 拉低 DE + 标记空闲。
+ * 调用者通过 rs485_send_dma() 传入的 data 缓冲区此时可以安全复用。
  */
-static void rs485_tx_kick(rs485_port_t port)
-{
-    rs485_port_ctx_t* ctx = &s_ports[port];
-    uint32_t pending = kfifo_len(&ctx->tx_fifo);
-
-    if (pending == 0) {
-        /* 队列已空 — 等待移位寄存器清空后拉低 DE */
-        bsp_uart_flush(&ctx->uart_cfg);
-        bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
-        ctx->tx_running = false;
-        return;
-    }
-
-    /* 从队列取出一段数据（最多 RS485_TX_CHUNK_SIZE 字节） */
-    uint32_t chunk = (pending > RS485_TX_CHUNK_SIZE) ? RS485_TX_CHUNK_SIZE : pending;
-    kfifo_get(&ctx->tx_fifo, ctx->tx_chunk, chunk);
-
-    /* 启动 DMA 发送 */
-    bsp_uart_send_dma(&ctx->uart_cfg, ctx->tx_chunk, chunk);
-}
-
-/**
- * @brief HDMA ISR 回调：上一段 DMA 发送完成
- *
- * 检查队列是否有更多数据 → 有则继续发送，无则收尾（flush + 拉低 DE）。
- */
-static void rs485_tx_dma_done(void* user_data)
+static void rs485_tx_dma_done(void *user_data)
 {
     rs485_port_t port = (rs485_port_t)(uintptr_t)user_data;
-    rs485_port_ctx_t* ctx = &s_ports[port];
+    rs485_port_ctx_t *ctx = &s_ports[port];
 
-    if (kfifo_is_empty(&ctx->tx_fifo)) {
-        /* 队列已空，发送管线收尾 */
-        bsp_uart_flush(&ctx->uart_cfg);
-        bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
-        ctx->tx_running = false;
-    } else {
-        /* 队列还有数据，启动下一段 DMA */
-        uint32_t pending = kfifo_len(&ctx->tx_fifo);
-        uint32_t chunk = (pending > RS485_TX_CHUNK_SIZE) ? RS485_TX_CHUNK_SIZE : pending;
-        kfifo_get(&ctx->tx_fifo, ctx->tx_chunk, chunk);
-        bsp_uart_send_dma(&ctx->uart_cfg, ctx->tx_chunk, chunk);
-    }
+    /* 等待移位寄存器排空，然后拉低 DE 回到接收模式 */
+    bsp_uart_flush(&ctx->uart_cfg);
+    bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
+
+    ctx->tx_busy = false;
+    ctx->tx_buf = NULL;
+    ctx->tx_len = 0;
 }
 
-hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len)
+hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len)
 {
     if (port >= RS485_PORT_MAX || !data || len == 0) {
         return status_fail;
     }
 
-    rs485_port_ctx_t* ctx = &s_ports[port];
+    rs485_port_ctx_t *ctx = &s_ports[port];
 
-    /* 入队 */
-    uint32_t written = kfifo_put(&ctx->tx_fifo, data, len);
-    if (written != len) {
-        return status_fail; /* 队列满 */
+    /* DMA 忙则拒绝（RS-485 半双工：TX 期间不应有新请求） */
+    if (ctx->tx_busy) {
+        return status_fail;
     }
 
-    /* 若无 DMA 运行中，启动首次发送 */
-    if (!ctx->tx_running) {
-        ctx->tx_running = true;
-        bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 1); /* DE=高 */
-        rs485_tx_kick(port);
-    }
+    /* 保存缓冲区引用（零拷贝：DMA 直接从 data 读取） */
+    ctx->tx_buf = data;
+    ctx->tx_len = len;
+    ctx->tx_busy = true;
+
+    /* 拉高 DE 进入发送模式，启动 DMA */
+    bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 1);
+    bsp_uart_send_dma(&ctx->uart_cfg, data, len);
 
     return status_success;
 }
 
-hpm_stat_t rs485_send(rs485_port_t port, const uint8_t* data, uint32_t len)
+hpm_stat_t rs485_send(rs485_port_t port, const uint8_t *data, uint32_t len)
 {
     hpm_stat_t stat = rs485_send_dma(port, data, len);
     if (stat != status_success) {
         return stat;
     }
-
-    /* 自旋等待管线排空 */
-    rs485_flush_tx(port);
-
     return status_success;
 }
 
@@ -338,26 +303,5 @@ bool rs485_is_tx_idle(rs485_port_t port)
     if (port >= RS485_PORT_MAX)
         return true;
 
-    rs485_port_ctx_t* ctx = &s_ports[port];
-    return !ctx->tx_running && kfifo_is_empty(&ctx->tx_fifo);
-}
-
-void rs485_flush_tx(rs485_port_t port)
-{
-    if (port >= RS485_PORT_MAX)
-        return;
-
-    rs485_port_ctx_t* ctx = &s_ports[port];
-
-    /* 等待 TX 队列排空 */
-    while (!kfifo_is_empty(&ctx->tx_fifo) || ctx->tx_running) {
-        /* 自旋：队列未空 或 DMA 仍在运行 */
-    }
-}
-
-uint32_t rs485_tx_pending(rs485_port_t port)
-{
-    if (port >= RS485_PORT_MAX)
-        return 0;
-    return kfifo_len(&s_ports[port].tx_fifo);
+    return !s_ports[port].tx_busy;
 }

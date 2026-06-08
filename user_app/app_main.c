@@ -25,12 +25,12 @@ int main(void)
     /* 初始化 LED 闪烁任务（250ms 循环闪烁） */
     led_task_init();
     /* 初始化 RS-485 DMA 收发任务 */
-    //uart_task_init();
+    uart_task_init();
 
     /* 主循环 */
     while (1) {
         led_task_poll();
-        //uart_task_poll();
+        uart_task_poll();
     }
 
     return 0;

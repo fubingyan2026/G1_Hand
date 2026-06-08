@@ -17,7 +17,7 @@
 #include "hpm_iomux.h"
 #include "hpm_soc.h"
 
-#define BSP_UART_MAX_INSTANCES 3
+#define BSP_UART_MAX_INSTANCES 4
 #define BSP_UART_DESC_COUNT 2
 #define BSP_UART_DESC_ALIGN __attribute__((aligned(8)))
 
@@ -82,8 +82,8 @@ static hpm_stat_t bsp_uart_start_tx_dma(bsp_uart_config_t* cfg,
     tx_cfg.size_in_byte = len;
     tx_cfg.src_mode = DMA_HANDSHAKE_MODE_NORMAL;
     tx_cfg.src_burst_size = DMA_NUM_TRANSFER_PER_BURST_1T;
-    /* 使能 TC 中断 */
-    tx_cfg.interrupt_mask = ~DMA_INTERRUPT_MASK_TERMINAL_COUNT;
+    /* 仅开启 TC 中断，屏蔽其他（& MASK_ALL 防止 ~ 污染 CTRL 其他位如 SRC_FIXBURST） */
+    tx_cfg.interrupt_mask = DMA_INTERRUPT_MASK_ALL & ~DMA_INTERRUPT_MASK_TERMINAL_COUNT;
 
     return dma_setup_channel(cfg->dma_controller, cfg->tx_dma_ch, &tx_cfg, true);
 }
@@ -95,26 +95,26 @@ static hpm_stat_t bsp_uart_start_tx_dma(bsp_uart_config_t* cfg,
 SDK_DECLARE_EXT_ISR_M(IRQn_HDMA, hdma_isr)
 void hdma_isr(void)
 {
-    for (uint32_t i = 0; i < s_instance_count; i++) {
-        bsp_uart_instance_t* inst = &s_instances[i];
-        bsp_uart_config_t* cfg = inst->cfg;
+    DMAV2_Type *dma = HPM_HDMA;
 
-        /* 检查 TX 通道 TC */
-        uint32_t tx_stat = dma_check_transfer_status(cfg->dma_controller,
-            cfg->tx_dma_ch);
-        if (tx_stat & DMA_CHANNEL_STATUS_TC) {
+    /* 快照并清除所有通道的挂起中断（W1C），确保退出前中断线拉低 */
+    uint32_t tc    = dma->INTTCSTS;
+    uint32_t err   = dma->INTERRSTS;
+    uint32_t abort = dma->INTABORTSTS;
+    dma->INTTCSTS    = tc;
+    dma->INTERRSTS   = err;
+    dma->INTABORTSTS = abort;
+
+    /* 仅处理我们关心的 TX TC 事件 */
+    for (uint32_t i = 0; i < s_instance_count; i++) {
+        bsp_uart_instance_t *inst = &s_instances[i];
+        bsp_uart_config_t *cfg   = inst->cfg;
+
+        if (tc & (1 << cfg->tx_dma_ch)) {
             inst->tx_done = true;
             if (cfg->tx_callback) {
                 cfg->tx_callback(cfg->tx_user_data);
             }
-        }
-
-        /* 检查 RX 通道（可选：可用于检测 DMA 错误等） */
-        uint32_t rx_stat = dma_check_transfer_status(cfg->dma_controller,
-            cfg->rx_dma_ch);
-        if (rx_stat & DMA_CHANNEL_STATUS_ERROR) {
-            /* RX DMA 错误 — 尝试重启 */
-            bsp_uart_start_rx_dma(cfg);
         }
     }
 }
@@ -146,6 +146,15 @@ SDK_DECLARE_EXT_ISR_M(IRQn_UART8, uart8_isr)
 void uart8_isr(void)
 {
     bsp_uart_instance_t* inst = find_instance(HPM_UART8);
+    if (inst) {
+        bsp_uart_rx_idle_handler(inst);
+    }
+}
+
+SDK_DECLARE_EXT_ISR_M(IRQn_UART1, uart1_isr)
+void uart1_isr(void)
+{
+    bsp_uart_instance_t* inst = find_instance(HPM_UART1);
     if (inst) {
         bsp_uart_rx_idle_handler(inst);
     }
@@ -223,6 +232,7 @@ void bsp_uart_init(bsp_uart_config_t* cfg)
     dma_ch_cfg.dst_addr = core_local_mem_to_sys_address(BOARD_RUNNING_CORE,
         (uint32_t)cfg->rx_circ_buf);
     dma_ch_cfg.dst_addr_ctrl = DMA_ADDRESS_CONTROL_INCREMENT;
+    dma_ch_cfg.interrupt_mask = DMA_INTERRUPT_MASK_ALL;  /* RX 环形 DMA 自维持，无需中断 */
     dma_ch_cfg.src_width = DMA_TRANSFER_WIDTH_BYTE;
     dma_ch_cfg.dst_width = DMA_TRANSFER_WIDTH_BYTE;
     dma_ch_cfg.size_in_byte = cfg->rx_circ_buf_size;

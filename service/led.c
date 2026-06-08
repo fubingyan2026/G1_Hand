@@ -86,7 +86,6 @@ static fsm_state_t led_fsm_none_handler(fsm_t* ctx)
 static fsm_state_t led_fsm_off_handler(fsm_t* ctx)
 {
     led_handle_t* handle = (led_handle_t*)fsm_user_data(ctx);
-    led_phys_write(handle, false);
     return LED_STATE_OFF;
 }
 
@@ -96,7 +95,6 @@ static fsm_state_t led_fsm_off_handler(fsm_t* ctx)
 static fsm_state_t led_fsm_on_handler(fsm_t* ctx)
 {
     led_handle_t* handle = (led_handle_t*)fsm_user_data(ctx);
-    led_phys_write(handle, true);
     return LED_STATE_ON;
 }
 
