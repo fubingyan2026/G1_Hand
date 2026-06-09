@@ -15,6 +15,7 @@
 #include "hpm_dmamux_src.h"
 #include "hpm_gpio_drv.h"
 #include "hpm_iomux.h"
+#include "hpm_l1c_drv.h"
 #include "hpm_soc.h"
 #include "kfifo.h"
 
@@ -281,6 +282,13 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len)
     ctx->tx_buf = data;
     ctx->tx_len = len;
     ctx->tx_busy = true;
+
+    /* 刷 D-Cache 确保 DMA 读取到 CPU 写入的最新数据 */
+    {
+        uint32_t flush_start = HPM_L1C_CACHELINE_ALIGN_DOWN((uint32_t)data);
+        uint32_t flush_end   = HPM_L1C_CACHELINE_ALIGN_UP((uint32_t)data + len);
+        l1c_dc_flush(flush_start, flush_end - flush_start);
+    }
 
     /* 拉高 DE 进入发送模式，启动 DMA */
     bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 1);

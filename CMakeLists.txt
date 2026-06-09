@@ -36,9 +36,11 @@ sdk_app_src(user_app/app_main.c)
 # --- 任务模块 (user_app/tasks) ---
 sdk_app_src(user_app/tasks/uart_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
+sdk_app_src(user_app/tasks/finger_task.c)
 
 # --- 服务层 (service) ---
 sdk_app_src(service/led.c)
+sdk_app_src(service/finger.c)
 
 # --- 中间件：数据结构与算法 (middlewares/utils) ---
 sdk_app_src(middlewares/utils/kfifo.c)
