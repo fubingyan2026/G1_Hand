@@ -28,14 +28,21 @@ extern "C" {
 
 /* Exported constants --------------------------------------------------------*/
 
-/** @brief 支持的最大手指电机数量 */
-#define FINGER_TASK_MAX_MOTORS   1U
+/** @brief MOTOR1 端口支持的最大手指电机数量 */
+#define FINGER_TASK_MAX_MOTORS_PORT1  5U
+
+/** @brief MOTOR2 端口支持的最大手指电机数量 */
+#define FINGER_TASK_MAX_MOTORS_PORT2  4U
+
+/** @brief 两个端口合计最大手指电机数量 */
+#define FINGER_TASK_MAX_MOTORS \
+    (FINGER_TASK_MAX_MOTORS_PORT1 + FINGER_TASK_MAX_MOTORS_PORT2)
 
 /** @brief 应答超时时间（毫秒） */
-#define FINGER_TASK_RESPONSE_TIMEOUT_MS  500U
+#define FINGER_TASK_RESPONSE_TIMEOUT_MS  50U
 
 /** @brief 命令间隔时间（毫秒），协议要求 ≥1ms */
-#define FINGER_TASK_INTER_CMD_MS  2U
+#define FINGER_TASK_INTER_CMD_MS  5U
 
 /* Exported macro ------------------------------------------------------------*/
 

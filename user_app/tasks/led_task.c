@@ -8,7 +8,7 @@
  * @file    led_task.c
  * @brief   LED 状态指示任务实现
  *
- * 使用 middlewares/service/led.c 库管理 PC28 状态指示灯：
+ * 使用 middlewares/service/led.c 库管理 PF02 状态指示灯：
  * - 通过 FSM 状态机控制 ON/OFF/BLINK_CODE 三种状态
  * - 闪烁完成后自动重新触发，实现循环闪烁
  * - 时间基准使用 MCHTMR 机器定时器（ms 精度）

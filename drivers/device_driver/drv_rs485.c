@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 G1_Hand 项目组
+ * Copyright (c) 2026 G1_Hand 项目组
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -29,12 +29,7 @@
 #define IOC_PB24 56
 #define IOC_PB25 57
 #define IOC_PB26 58
-#define IOC_PC05 69
-#define IOC_PC06 70
-#define IOC_PC07 71
-
 #define GPIO_PORT_PB 1
-#define GPIO_PORT_PC 2 /* GPIO_DO_GPIOC */
 
 #define PB00_PIN 0
 #define PB01_PIN 1
@@ -42,16 +37,14 @@
 #define PB24_PIN 24
 #define PB25_PIN 25
 #define PB26_PIN 26
-#define PC05_PIN 5
-#define PC06_PIN 6
-#define PC07_PIN 7
+#define PB29_PIN 29
 
 /* --------------------------------------------------------------------------
  * DMA 通道分配
  * -------------------------------------------------------------------------- */
 
-#define DMA_CH_UART1_TX  0
-#define DMA_CH_UART1_RX  1
+#define DMA_CH_UART15_TX 0
+#define DMA_CH_UART15_RX 1
 #define DMA_CH_UART14_TX 4
 #define DMA_CH_UART14_RX 5
 #define DMA_CH_UART8_TX  6
@@ -108,22 +101,22 @@ void rs485_init(rs485_port_t port)
 
     /* 按端口配置 UART */
     switch (port) {
-    case RS485_PORT_MOTOR1: /* UART1: TX=PC7, RX=PC6, DE=PC5 */
-        ctx->uart_cfg.base = HPM_UART1;
+    case RS485_PORT_MOTOR1: /* UART15: TX=PB31, RX=PB30, DE=PB29 */
+        ctx->uart_cfg.base = HPM_UART15;
         ctx->uart_cfg.baudrate = RS485_DEFAULT_BAUDRATE;
-        ctx->uart_cfg.clk_name = clock_uart1;
-        ctx->uart_cfg.irq_num = IRQn_UART1;
-        ctx->uart_cfg.tx_ioc_pad = IOC_PC07;
-        ctx->uart_cfg.tx_ioc_func = IOC_PC07_FUNC_CTL_UART1_TXD;
-        ctx->uart_cfg.rx_ioc_pad = IOC_PC06;
-        ctx->uart_cfg.rx_ioc_func = IOC_PC06_FUNC_CTL_UART1_RXD;
-        ctx->uart_cfg.tx_dma_ch = DMA_CH_UART1_TX;
-        ctx->uart_cfg.rx_dma_ch = DMA_CH_UART1_RX;
-        ctx->uart_cfg.tx_dma_req = HPM_DMA_SRC_UART1_TX;
-        ctx->uart_cfg.rx_dma_req = HPM_DMA_SRC_UART1_RX;
+        ctx->uart_cfg.clk_name = clock_uart15;
+        ctx->uart_cfg.irq_num = IRQn_UART15;
+        ctx->uart_cfg.tx_ioc_pad = IOC_PAD_PB31;
+        ctx->uart_cfg.tx_ioc_func = IOC_PB31_FUNC_CTL_UART15_TXD;
+        ctx->uart_cfg.rx_ioc_pad = IOC_PAD_PB30;
+        ctx->uart_cfg.rx_ioc_func = IOC_PB30_FUNC_CTL_UART15_RXD;
+        ctx->uart_cfg.tx_dma_ch = DMA_CH_UART15_TX;
+        ctx->uart_cfg.rx_dma_ch = DMA_CH_UART15_RX;
+        ctx->uart_cfg.tx_dma_req = HPM_DMA_SRC_UART15_TX;
+        ctx->uart_cfg.rx_dma_req = HPM_DMA_SRC_UART15_RX;
         ctx->de_port = HPM_GPIO0;
-        ctx->de_port_idx = GPIO_PORT_PC;
-        ctx->de_pin_idx = PC05_PIN;
+        ctx->de_port_idx = GPIO_PORT_PB;
+        ctx->de_pin_idx = PB29_PIN;
         break;
 
     case RS485_PORT_MOTOR2: /* UART14: TX=PB24, RX=PB25, DE=PB26 */

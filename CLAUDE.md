@@ -67,7 +67,7 @@ drivers/
     bsp_gpio.c                     — GPIO init/read/write/toggle (wraps hpm_gpio_drv)
     bsp_uart.c                     — UART HAL: DMA send/recv, blocking I/O, HDMA ISR, idle detection
   device_driver/                   — Peripheral device drivers
-    drv_led.c                      — PC28 GPIO LED control (on/off/toggle/set/read)
+    drv_led.c                      — PF02 GPIO LED control (on/off/toggle/set/read)
     drv_rs485.c                    — 3-port RS-485 half-duplex driver (interrupt-driven TX queue + DMA ring RX)
 middlewares/
   utils/                           — Data structure libraries
@@ -115,13 +115,13 @@ From [board_connect.md](board_connect.md) and verified against driver source cod
 
 | Peripheral | MCU Pins | Interface | Purpose |
 |-----------|----------|-----------|---------|
-| UART1 | PC6 (RX), PC7 (TX), PC5 (EN) | RS-485 (SIT3088ETK) | Motor comms channel 1 |
+| UART15 | PB30 (RX), PB31 (TX), PB29 (EN) | RS-485 (SIT3088ETK) | Motor comms channel 1 |
 | UART14 | PB24 (TX), PB25 (RX), PB26 (EN) | RS-485 (SIT3088ETK) | Motor comms channel 2 |
 | UART8 | PB00 (TX), PB01 (RX), PB02 (EN) | RS-485 (SIT3088ETK) | External RS-485 comms |
 | CAN4 | PA16 (TX), PA17 (RX), PA18 (STB) | CAN (TCAN1044) | CAN bus |
 | EtherCAT P0 | PA20–PA23 (RXN/RXP/TXN/TXP) | EtherCAT | EtherCAT communication |
 | UART0 | PA00 (TX), PA01 (RX) | UART | Debug serial console (115200 8N1) |
-| LED | PC28 (GPIO0, GPIOC pin 28) | GPIO | Status indicator (active-low) |
+| LED | PF02 (GPIO0, GPIOF pin 2) | GPIO | Status indicator (active-low) |
 
 ## Coding Conventions
 

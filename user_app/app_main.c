@@ -22,7 +22,7 @@
 #include <stdio.h>
 
 /** @brief 速度值：最高位为方向，bit31=1 正转，速度值 500 RPM */
-#define FINGER_INIT_SPEED   (0x80000000UL | 500UL)
+#define FINGER_INIT_SPEED   (0x80000000UL | 3000UL)
 
 /**
  * @brief 等待电机命令完成（发送+应答或超时）
@@ -55,14 +55,14 @@ static void finger_init_all_motors(void)
         }
 
         /* 1. 使能电机 */
-        printf("[FINGER] %s: start...\n", name);
-        finger_start(m);
-        finger_wait_done(m);
+        //printf("[FINGER] %s: start...\n", name);
+        //finger_start(m);
+        //finger_wait_done(m);
 
         /* 2. 速度模式 500RPM */
-        printf("[FINGER] %s: speed mode 500RPM...\n", name);
-        finger_set_speed(m, FINGER_INIT_SPEED);
-        finger_wait_done(m);
+        //printf("[FINGER] %s: speed mode 500RPM...\n", name);
+        //finger_set_speed(m, FINGER_INIT_SPEED);
+        //finger_wait_done(m);
 
         printf("[FINGER] %s: done\n", name);
     }

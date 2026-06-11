@@ -3,7 +3,7 @@
  * @file    protocol_parser.c
  * @author  maximilian
  * @version V1.0.0
- * @date    2026-05-02
+ * @date    2026-06-02
  * @brief   通用协议解析器实现
  * @attention
  *

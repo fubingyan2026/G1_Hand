@@ -48,8 +48,15 @@ static const uint8_t s_response_header[] = { 0xAA, 0x55 };
 /** @brief 主循环轮询中单次最大读取字节数 */
 #define MAX_RX_READ_PER_POLL       64U
 
-/** @brief 周期轮询间隔（毫秒），每个间隔启动一轮全部电机位置查询 */
-#define FINGER_TASK_POLL_INTERVAL_MS  100U
+/** @brief 电机默认目标转速 (RPM) */
+#define FINGER_TASK_DEFAULT_SPEED_RPM  6000U
+
+/** @brief 速度反转间隔（毫秒），每 2 秒反转一次方向 */
+#define FINGER_TASK_REVERSE_INTERVAL_MS  1000U
+
+/** @brief 构建速度值（bit31=1 正转，低 31 位为 RPM 值） */
+#define FINGER_TASK_MAKE_SPEED_VAL(forward, rpm) \
+    (((forward) ? 0x80000000U : 0x00000000U) | (rpm))
 
 /* Private types -------------------------------------------------------------*/
 
@@ -93,9 +100,12 @@ typedef struct {
 
 /* Private variables ---------------------------------------------------------*/
 
-static port_ctx_t s_motor_port;              /**< 电机端口状态（单端口 RS485_PORT_MOTOR1） */
+static port_ctx_t s_motor_port1;             /**< 电机端口1状态 (RS485_PORT_MOTOR1) */
+static port_ctx_t s_motor_port2;             /**< 电机端口2状态 (RS485_PORT_MOTOR2) — TX 镜像 + 独立 RX */
 static uint32_t s_ticks_per_ms;              /**< MCHTMR 每毫秒计数值 */
 static bool s_finger_task_initialized;       /**< 任务初始化标志 */
+static uint32_t s_last_reverse_ticks;        /**< 上次反转时刻（tick） */
+static bool s_direction_forward = true;      /**< 当前旋转方向（true=正转） */
 
 /** @brief 9 个手指电机实例（静态分配） */
 static finger_handle_t s_finger_instances[FINGER_TASK_MAX_MOTORS];
@@ -112,11 +122,6 @@ static const char* s_tx_state_names[] = {
     "WAIT_RESP",
 };
 
-/** @brief 周期轮询状态 */
-static uint32_t s_poll_round_start_ticks;    /**< 本轮轮询起始 tick */
-static uint8_t  s_poll_index;                /**< 当前轮询的电机序号（0-8） */
-static bool     s_poll_round_active;         /**< 轮询回合进行中 */
-
 /* Private function prototypes -----------------------------------------------*/
 
 static uint32_t finger_task_get_ticks(void);
@@ -130,11 +135,13 @@ static protocol_parser_error_t finger_parser_check_cb(uint8_t* buffer,
 static fsm_state_t port_tx_idle_handler(fsm_t* ctx);
 static fsm_state_t port_tx_waiting_handler(fsm_t* ctx);
 
-static void finger_task_init_port(void);
+static void finger_task_init_port(port_ctx_t* ctx, rs485_port_t port,
+    const char* name);
 static void finger_task_process_rx(port_ctx_t* port_ctx);
 static void finger_task_dispatch_response(port_ctx_t* port_ctx,
     const uint8_t* frame, uint16_t len);
 static finger_handle_t* finger_task_find_pending_motor(rs485_port_t port);
+static void finger_task_queue_speed_all(uint32_t speed_val);
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -246,41 +253,8 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
         }
     }
 
-    /* 优先处理用户请求的命令 */
+    /* 处理用户请求的命令 */
     finger_handle_t* motor = finger_task_find_pending_motor(port_ctx->port);
-
-    /* 无用户命令时，检查是否需要启动/继续周期轮询 */
-    if (!motor) {
-        uint32_t now = finger_task_get_ticks();
-
-        /* 启动新一轮轮询 */
-        if (!s_poll_round_active) {
-            if (finger_task_is_timeout(s_poll_round_start_ticks,
-                    FINGER_TASK_POLL_INTERVAL_MS)) {
-                s_poll_round_active = true;
-                s_poll_index = 0;
-                s_poll_round_start_ticks = now;
-            } else {
-                return PORT_TX_IDLE;
-            }
-        }
-
-        /* 对当前序号电机发起状态查询 */
-        if (s_poll_index < FINGER_TASK_MAX_MOTORS) {
-            finger_handle_t* poll_motor = &s_finger_instances[s_poll_index];
-            if (poll_motor->initialized) {
-                (void)finger_read_status(poll_motor);
-                motor = poll_motor;
-            }
-            s_poll_index++;
-        }
-
-        /* 本轮所有电机已查询完毕 */
-        if (s_poll_index >= FINGER_TASK_MAX_MOTORS) {
-            s_poll_round_active = false;
-            s_poll_round_start_ticks = finger_task_get_ticks();
-        }
-    }
 
     if (!motor) {
         return PORT_TX_IDLE;
@@ -360,20 +334,20 @@ static fsm_state_t port_tx_waiting_handler(fsm_t* ctx)
 
 /**
  * @brief 初始化单个端口（协议解析器 + 发送 FSM）
+ * @param ctx  端口上下文指针
  * @param port RS-485 端口号
+ * @param name 解析器名称
  */
-static void finger_task_init_port(void)
+static void finger_task_init_port(port_ctx_t* ctx, rs485_port_t port,
+    const char* name)
 {
-    port_ctx_t* ctx = &s_motor_port;
-    rs485_port_t port = RS485_PORT_MOTOR1;
-
     memset(ctx, 0, sizeof(port_ctx_t));
     ctx->port = port;
     ctx->current_motor = NULL;
 
     /* 1. 初始化协议解析器 */
     protocol_parser_config_t parser_cfg;
-    parser_cfg.name = "motor1_parser";
+    parser_cfg.name = name;
     parser_cfg.header = s_response_header;
     parser_cfg.header_len = RESPONSE_HEADER_LEN;
     parser_cfg.footer = NULL;
@@ -418,7 +392,8 @@ static void finger_task_init_port(void)
     }
 
     ctx->active = true;
-    printf("[FINGER] Motor port (RS485_PORT_MOTOR1) initialized (parser + FSM)\n");
+
+    printf("[FINGER] Port %d (%s) initialized (parser + FSM)\n", port, name);
 }
 
 /* --- 接收处理 --- */
@@ -512,6 +487,24 @@ static finger_handle_t* finger_task_find_pending_motor(rs485_port_t port)
     return NULL;
 }
 
+/**
+ * @brief 向所有已注册电机排入速度指令
+ * @param speed_val 速度值（含方向位）
+ */
+static void finger_task_queue_speed_all(uint32_t speed_val)
+{
+    clist_head_t* head = finger_get_head();
+    finger_handle_t* h;
+
+    if (!head) {
+        return;
+    }
+
+    clist_for_each_entry(h, head, node) {
+        (void)finger_set_speed(h, speed_val);
+    }
+}
+
 /* Exported functions --------------------------------------------------------*/
 
 void finger_task_init(void)
@@ -527,44 +520,78 @@ void finger_task_init(void)
         s_ticks_per_ms = 1; /* 防止除零 */
     }
 
-    /* 初始化所有 RS-485 端口（全部三路端口硬件初始化） */
-     rs485_init(RS485_PORT_MOTOR1);
+    /* 初始化电机 RS-485 端口硬件（MOTOR1 + MOTOR2） */
+    rs485_init(RS485_PORT_MOTOR1);
+    rs485_init(RS485_PORT_MOTOR2);
 
-    /* 仅初始化电机端口 MOTOR1（解析器 + FSM） */
-    finger_task_init_port();
+    /* 初始化两个端口的解析器 + 发送 FSM */
+    finger_task_init_port(&s_motor_port1, RS485_PORT_MOTOR1, "motor1_parser");
+    finger_task_init_port(&s_motor_port2, RS485_PORT_MOTOR2, "motor2_parser");
 
-    /* 注册手指电机实例（ID 1..N，RS485_PORT_MOTOR1） */
-    for (uint8_t id = 1; id <= FINGER_TASK_MAX_MOTORS; id++) {
-        /* 写入静态名称缓冲区，避免栈变量悬空指针 */
-        snprintf(s_finger_names[id - 1], sizeof(s_finger_names[0]),
+    /* 注册手指电机实例 */
+    uint8_t instance_idx = 0;
+
+    /* PORT1 电机（ID 1..N，RS485_PORT_MOTOR1） */
+    for (uint8_t id = 1; id <= FINGER_TASK_MAX_MOTORS_PORT1; id++) {
+        snprintf(s_finger_names[instance_idx], sizeof(s_finger_names[0]),
             "finger_%u", (unsigned int)id);
 
         finger_config_t cfg = {
-            .name = s_finger_names[id - 1],
+            .name = s_finger_names[instance_idx],
             .motor_id = id,
             .rs485_port = RS485_PORT_MOTOR1,
-            .tx_buffer = s_finger_tx_buffers[id - 1],
+            .tx_buffer = s_finger_tx_buffers[instance_idx],
             .tx_buffer_len = FINGER_TX_BUFFER_SIZE,
             .reduction_ratio = 1080,
             .pole_pairs = 2,
         };
 
         finger_error_t err = finger_register_static(&cfg,
-            &s_finger_instances[id - 1]);
+            &s_finger_instances[instance_idx]);
         if (FINGER_IS_ERR(err)) {
-            printf("[FINGER] Register finger_%u failed: %d\n",
+            printf("[FINGER] Register finger_%u (PORT1) failed: %d\n",
                 (unsigned int)id, err);
         }
+        instance_idx++;
     }
 
-    /* 初始化周期轮询状态（启动后立即开始第一轮） */
-    s_poll_round_start_ticks = finger_task_get_ticks();
-    s_poll_index = 0;
-    s_poll_round_active = false;
+    /* PORT2 电机（ID 接续，RS485_PORT_MOTOR2） */
+    for (uint8_t id = 1; id <= FINGER_TASK_MAX_MOTORS_PORT2; id++) {
+        uint8_t motor_id = FINGER_TASK_MAX_MOTORS_PORT1 + id;
+        snprintf(s_finger_names[instance_idx], sizeof(s_finger_names[0]),
+            "finger_%u", (unsigned int)motor_id);
+
+        finger_config_t cfg = {
+            .name = s_finger_names[instance_idx],
+            .motor_id = motor_id,
+            .rs485_port = RS485_PORT_MOTOR2,
+            .tx_buffer = s_finger_tx_buffers[instance_idx],
+            .tx_buffer_len = FINGER_TX_BUFFER_SIZE,
+            .reduction_ratio = 1080,
+            .pole_pairs = 2,
+        };
+
+        finger_error_t err = finger_register_static(&cfg,
+            &s_finger_instances[instance_idx]);
+        if (FINGER_IS_ERR(err)) {
+            printf("[FINGER] Register finger_%u (PORT2) failed: %d\n",
+                (unsigned int)motor_id, err);
+        }
+        instance_idx++;
+    }
+
+    /* 首次发送速度指令（正转 3000 RPM），后续由 poll 中反转逻辑持续发送 */
+    s_direction_forward = true;
+    s_last_reverse_ticks = finger_task_get_ticks();
+    finger_task_queue_speed_all(
+        FINGER_TASK_MAKE_SPEED_VAL(s_direction_forward, FINGER_TASK_DEFAULT_SPEED_RPM));
 
     s_finger_task_initialized = true;
-    printf("[FINGER] Task initialized, %lu ticks/ms, %u motors registered\n",
-        (unsigned long)s_ticks_per_ms, FINGER_TASK_MAX_MOTORS);
+    printf("[FINGER] Task initialized, %lu ticks/ms, %u motors registered, "
+        "all set to %lu RPM (reverse every %lu ms)\n",
+        (unsigned long)s_ticks_per_ms, FINGER_TASK_MAX_MOTORS,
+        (unsigned long)FINGER_TASK_DEFAULT_SPEED_RPM,
+        (unsigned long)FINGER_TASK_REVERSE_INTERVAL_MS);
 }
 
 void finger_task_poll(void)
@@ -573,29 +600,44 @@ void finger_task_poll(void)
         return;
     }
 
-    port_ctx_t* ctx = &s_motor_port;
-    if (!ctx->active) {
-        return;
+    /* 每 2 秒反转一次全部电机方向 */
+    if (finger_task_is_timeout(s_last_reverse_ticks, FINGER_TASK_REVERSE_INTERVAL_MS)) {
+        s_direction_forward = !s_direction_forward;
+        s_last_reverse_ticks = finger_task_get_ticks();
+
+        uint32_t speed_val = FINGER_TASK_MAKE_SPEED_VAL(
+            s_direction_forward, FINGER_TASK_DEFAULT_SPEED_RPM);
+
+        finger_task_queue_speed_all(speed_val);
     }
 
-    /* 1. 读取接收数据并喂入解析器 */
-    finger_task_process_rx(ctx);
+    /* 双端口独立轮询 */
+    port_ctx_t* ports[] = { &s_motor_port1, &s_motor_port2 };
+    for (int i = 0; i < 2; i++) {
+        port_ctx_t* ctx = ports[i];
+        if (!ctx->active) {
+            continue;
+        }
 
-    /* 2. 更新解析器空闲计时器 */
-    (void)protocol_parser_tick(&ctx->parser);
+        /* 1. 读取接收数据并喂入解析器 */
+        finger_task_process_rx(ctx);
 
-    /* 3. 尝试解析完整应答帧 */
-    uint16_t frame_len = 0;
-    uint8_t* frame_data = NULL;
-    protocol_parser_error_t parse_err = protocol_parser_parse(
-        &ctx->parser, &frame_len, &frame_data);
+        /* 2. 更新解析器空闲计时器 */
+        (void)protocol_parser_tick(&ctx->parser);
 
-    if (parse_err == PROTOCOL_PARSER_OK) {
-        finger_task_dispatch_response(ctx, frame_data, frame_len);
+        /* 3. 尝试解析完整应答帧 */
+        uint16_t frame_len = 0;
+        uint8_t* frame_data = NULL;
+        protocol_parser_error_t parse_err = protocol_parser_parse(
+            &ctx->parser, &frame_len, &frame_data);
+
+        if (parse_err == PROTOCOL_PARSER_OK) {
+            finger_task_dispatch_response(ctx, frame_data, frame_len);
+        }
+
+        /* 4. 驱动发送 FSM */
+        (void)fsm_step(&ctx->tx_fsm);
     }
-
-    /* 4. 驱动发送 FSM */
-    (void)fsm_step(&ctx->tx_fsm);
 }
 
 bool finger_task_get_stats(uint8_t port, uint32_t* p_tx_count,
@@ -603,18 +645,18 @@ bool finger_task_get_stats(uint8_t port, uint32_t* p_tx_count,
 {
     (void)port;
 
-    if (!s_motor_port.active) {
+    if (!s_motor_port1.active) {
         return false;
     }
 
     if (p_tx_count) {
-        *p_tx_count = s_motor_port.tx_count;
+        *p_tx_count = s_motor_port1.tx_count;
     }
     if (p_rx_count) {
-        *p_rx_count = s_motor_port.rx_count;
+        *p_rx_count = s_motor_port1.rx_count;
     }
     if (p_timeout_count) {
-        *p_timeout_count = s_motor_port.timeout_count;
+        *p_timeout_count = s_motor_port1.timeout_count;
     }
 
     return true;

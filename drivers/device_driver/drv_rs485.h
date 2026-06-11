@@ -9,7 +9,7 @@
  * @brief   RS-485 半双工通信驱动
  *
  * 管理 G1_Hand 灵巧手控制器的三路 RS-485 端口：
- * - RS485_PORT_MOTOR1  (UART1,  PC7/PC6, DE=PC5)
+ * - RS485_PORT_MOTOR1  (UART15, PB31/PB30, DE=PB29)
  * - RS485_PORT_MOTOR2  (UART14, PB24/PB25, DE=PB26)
  * - RS485_PORT_EXT     (UART8,  PB00/PB01, DE=PB02)
  *
@@ -34,7 +34,7 @@ extern "C" {
  * -------------------------------------------------------------------------- */
 
 typedef enum {
-    RS485_PORT_MOTOR1 = 0,      /**< 电机通讯通道 1 (UART1) */
+    RS485_PORT_MOTOR1 = 0,      /**< 电机通讯通道 1 (UART15) */
     RS485_PORT_MOTOR2,          /**< 电机通讯通道 2 (UART14) */
     RS485_PORT_EXT,             /**< 外部 RS-485 通讯 (UART8) */
     RS485_PORT_MAX
@@ -44,7 +44,7 @@ typedef enum {
  * 默认配置
  * -------------------------------------------------------------------------- */
 
-#define RS485_DEFAULT_BAUDRATE          (3000000U)
+#define RS485_DEFAULT_BAUDRATE          (2000000U)
 #define RS485_RX_IDLE_THRESHOLD         10U     /**< 接收空闲阈值（位时间） */
 #define RS485_RX_CIRC_BUF_SIZE          128U    /**< 每端口 DMA 环形缓冲区大小 */
 #define RS485_RX_RING_BUF_SIZE          256U    /**< 每端口接收环形缓冲区大小 */
