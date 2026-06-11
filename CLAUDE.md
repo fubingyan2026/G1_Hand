@@ -63,7 +63,7 @@ user_app/                          — Application layer
     led_task.c                     — LED status indicator (wires drv_led → service/led)
     uart_task.c                    — RS-485 comms task (currently disabled in main)
     finger_task.c                  — Finger motor multi-port RS-485 scheduler
-    canfd_task.c                   — CAN-FD send/receive test task (CAN4, PA16/PA17/PA18)
+    motor_control_task.c           — CAN-FD ↔ RS-485 motor control bridge (CAN4, PA16/PA17/PA18)
 drivers/
   bsp/                             — Board support package (thin HAL wrappers)
     bsp_gpio.c                     — GPIO init/read/write/toggle (wraps hpm_gpio_drv)
@@ -83,8 +83,12 @@ middlewares/
     protocol_parser.c              — Frame parser with idle timeout, header/footer match, kfifo input
 service/                           — Service modules (higher-level logic on top of drivers)
   led.c                            — FSM-based LED controller: ON/OFF/BLINK_CODE, async command queue, hot-updatable params
+  finger.c                         — Finger motor service layer (RS-485 protocol, multi-instance via clist)
+  motor_control.c                  — CAN-FD motor control bridge service (frame parsing, command dispatch, response assembly)
 board/hpm6e00_ethercat_slave/      — Board-level init and pinmux (HPM SDK)
 ```
+
+> **Legacy files**: `user_app/tasks/canfd_task.c` exists on disk but is **not compiled** (not registered in CMakeLists.txt) — superseded by `motor_control_task.c`. `user_app/tasks/uart_task.c` is compiled but **never called** from `main()` — intentionally disabled.
 
 ### Dependency graph
 
@@ -100,13 +104,13 @@ app_main.c
   ├── finger_task
   │     ├── drv_rs485 ── bsp_uart ── hpm_uart_drv, hpm_dmav2_drv, hpm_dmamux_drv (SDK)
   │     ├── bsp_gpio
-  │     ├── fsm
   │     ├── protocol_parser ── kfifo
-  │     └── service/finger
-  ├── canfd_task
-  │     └── drv_can ── hpm_mcan_drv (SDK), kfifo
-  └── uart_task (disabled)
-        └── drv_rs485
+  │     └── service/finger ── protocol_packer, clist
+  └── motor_control_task
+        ├── drv_can ── hpm_mcan_drv (SDK), kfifo
+        ├── protocol_parser, protocol_packer
+        └── service/motor_control
+              └── service/finger ── drv_rs485
 ```
 
 ### Key architectural patterns
@@ -116,20 +120,35 @@ app_main.c
 3. **RS-485 RX uses double buffering**: DMA writes to 128-byte circular buffer → hardware idle-detect triggers ISR → data copied to 256-byte kfifo → application reads from kfifo.
 4. **FSM-based services**: `service/led` uses `middlewares/fsm` for state management with async command queues (kfifo). Each LED instance has its own FSM context. This pattern is intended for future service modules.
 5. **Zero dynamic allocation at runtime**: All memory (FSM tables, kfifo buffers, DMA descriptors) is statically allocated. `__malloc` is used sparingly and always followed by `memset(ptr, 0, size)`.
+6. **CAN-FD ↔ RS-485 bridge**: `motor_control_task` acts as a protocol gateway — CAN-FD frames received from host → parsed → dispatched as RS-485 commands to finger motors → motor responses collected → assembled into CAN-FD response frames sent back to host. 9 motors are distributed across 2 RS-485 ports (5 on PORT1/UART15, 4 on PORT2/UART14). A heartbeat frame is sent every 100ms via CAN-FD (CAN ID 0x101).
 
 ## Hardware Peripherals
 
 From [board_connect.md](board_connect.md) and verified against driver source code:
 
-| Peripheral | MCU Pins | Interface | Purpose |
-|-----------|----------|-----------|---------|
-| UART15 | PB30 (RX), PB31 (TX), PB29 (EN) | RS-485 (SIT3088ETK) | Motor comms channel 1 |
-| UART14 | PB24 (TX), PB25 (RX), PB26 (EN) | RS-485 (SIT3088ETK) | Motor comms channel 2 |
-| UART8 | PB00 (TX), PB01 (RX), PB02 (EN) | RS-485 (SIT3088ETK) | External RS-485 comms |
-| CAN4 | PA16 (TX), PA17 (RX), PA18 (STB) | CAN (TCAN1044) | CAN bus |
-| EtherCAT P0 | PA20–PA23 (RXN/RXP/TXN/TXP) | EtherCAT | EtherCAT communication |
-| UART0 | PA00 (TX), PA01 (RX) | UART | Debug serial console (115200 8N1) |
-| LED | PF02 (GPIO0, GPIOF pin 2) | GPIO | Status indicator (active-low) |
+| Peripheral | MCU Pins | Interface | Baud / Notes | Purpose |
+|-----------|----------|-----------|--------------|---------|
+| UART15 | PB30 (RX), PB31 (TX), PB29 (EN) | RS-485 (SIT3088ETK) | 2 Mbps | Motor comms channel 1 (motors 1-5) |
+| UART14 | PB24 (TX), PB25 (RX), PB26 (EN) | RS-485 (SIT3088ETK) | 2 Mbps | Motor comms channel 2 (motors 6-9) |
+| UART8 | PB00 (TX), PB01 (RX), PB02 (EN) | RS-485 (SIT3088ETK) | 2 Mbps | External RS-485 comms |
+| CAN4 | PA16 (TX), PA17 (RX), PA18 (STB) | CAN-FD (TCAN1044) | Arb: 1 Mbps / Data: 5 Mbps (BRS) | CAN bus motor control bridge |
+| EtherCAT P0 | PA20–PA23 (RXN/RXP/TXN/TXP) | EtherCAT | — | EtherCAT communication |
+| UART0 | PA00 (TX), PA01 (RX) | UART | 115200 8N1 | Debug serial console |
+| LED | PF02 (GPIO0, GPIOF pin 2) | GPIO | Active-low | Status indicator |
+
+## Protocol Documentation
+
+The project implements two communication protocols. When working with motor control logic, consult:
+
+- **[can_protocol.md](can_protocol.md)** — CAN-FD motor control protocol: variable-length frames (6–42 bytes), frame format `[header 's'][cmd][flags][datalen][data 0-36B][crc_check XOR][ender 'e']`, 11-bit CAN IDs (0x100 Host→MCU, 0x101 MCU→Host), command codes (0x01–0x07 control, 0x10–0x13 query, 0xF0 heartbeat), 9-motor addressing with 2 or 4 bytes/motor (little-endian), flags bit0 = ACK_REQUEST.
+- **微型手指执行器用户手册 V1.4** (root) — Third-party finger actuator RS-485 protocol: 0x55 0xAA header, 3 Mbps native baud (MCU talks at 2 Mbps), control table read/write commands, motor control modes (speed/position/torque/current/position-speed).
+
+## Flashing & Debugging
+
+- **Debug probe**: FT2232 via OpenOCD, target `hpm6e80-dual-core` (from board YAML)
+- **Board**: HPM6E80xVMx, 32 MB SDRAM, 16 MB QSPI NOR flash at 0x80000000
+- **Binary**: `output/demo.bin` (XIP from flash)
+- No flashing scripts are included in the repo — use OpenOCD or the HPMicro Programmer tool to flash
 
 ## Coding Conventions
 

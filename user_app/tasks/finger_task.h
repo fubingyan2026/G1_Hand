@@ -49,11 +49,24 @@ extern "C" {
 /* Exported functions prototypes ---------------------------------------------*/
 
 /**
- * @brief 初始化手指电机通讯任务
+ * @brief 初始化手指电机通讯传输层
  *
- * 初始化全部 RS-485 端口（UART1/14/8），
- * 为每个端口创建 protocol_parser 实例用于解析应答帧。
- * 应在 finger_init() 和 rs485_init_all() 之后调用一次。
+ * 仅初始化 RS-485 硬件端口 + 每端口 protocol_parser + 发送 FSM。
+ * 不注册电机实例 — 实例注册由 motor_link_task 统一管理。
+ *
+ * 与 finger_task_init() 的区别：
+ *   - finger_task_init() 同时注册 9 个 finger 电机实例（旧行为，已废弃）
+ *   - finger_task_init_transport() 只初始化传输层硬件和协议工具
+ *
+ * @note 调用前需先调用 finger_init() 初始化 finger 服务层
+ */
+void finger_task_init_transport(void);
+
+/**
+ * @brief 初始化手指电机通讯任务（已废弃）
+ *
+ * @deprecated 请使用 finger_task_init_transport() + motor_link_task_init()
+ *             替代。此函数仅保留用于向后兼容。
  */
 void finger_task_init(void);
 

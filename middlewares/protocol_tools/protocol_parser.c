@@ -22,6 +22,11 @@
 
 /* Private constants ---------------------------------------------------------*/
 
+/*
+ * 空闲超时计算常量。
+ * FRAME_BAUD_RATE 名义上针对 UART (115200)，在 CAN-FD (1M/5M) 场景下
+ * 仅作为空闲阈值公式的缩放因子复用，IDLE_TIMER_US 和 IDLE_FACTOR 联合控制实际时基。
+ */
 #define IDLE_TIMER_US (1000 * 5)
 #define FRAME_BAUD_RATE 115200
 #define IDLE_FACTOR 4

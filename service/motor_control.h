@@ -14,8 +14,9 @@
  * 通过 CAN-FD 接收上位机指令，转换为 RS-485 电机控制指令（调用 finger 服务），
  * 并将电机应答通过 CAN-FD 回传给上位机。
  *
- * 协议帧格式 (固定 22 字节):
- *   [header:1B='s'][cmd:1B][flags:1B][data:18B=9电机×2字节][ender:1B='e']
+ * 协议帧格式 (可变长度 6-42 字节):
+ *   [header:1B='s'][cmd:1B][flags:1B][datalen:1B][data:N B][crc_check:1B][ender:1B='e']
+ *   N = datalen (0/18/36), 帧总长 = 6 + datalen
  *
  * @note
  * - 采用 context/config 双结构体模式，支持多实例（每电机一个实例）
@@ -50,14 +51,16 @@ extern "C" {
  * 复合命令: 4 字节/电机 (datalen ≤ 36, 必须为 4 的倍数)
  * 帧总字节数 = 6 + datalen (最小 6, 最大 42)
  */
+/**
+ * @note crc_check 和 ender 位于 data[datalen] 和 data[datalen+1] 的可变偏移处，
+ *       而非结构体固定偏移。解析器已校验帧头/帧尾/CRC，此结构体仅映射线格式前 4+datalen 字节。
+ */
 typedef struct __attribute__((packed)) {
     uint8_t header;                     /**< 帧头，固定 's' (0x73) */
     uint8_t cmd;                        /**< 命令码 */
     uint8_t flags;                      /**< 标志位 */
     uint8_t datalen;                    /**< data 段实际字节数 (0-36) */
     uint8_t data[36];                   /**< 电机数据 (最大 36 字节), 小端序 */
-    uint8_t crc_check;                  /**< XOR 校验 (覆盖 cmd..data[datalen-1]) */
-    uint8_t ender;                      /**< 帧尾，固定 'e' (0x65) */
 } canfd_protocol_t;
 
 /**
@@ -129,9 +132,9 @@ struct motor_control_handle {
     uint16_t current;                   /**< 最近设置/查询的电流/力矩值 */
     uint8_t fault_flags;                /**< 故障标志位 */
 
-    /* CAN-FD 应答帧缓冲（每电机单应答槽，固定 22 字节） */
+    /* CAN-FD 应答帧缓冲 */
     bool has_pending_response;          /**< 有待发送的 CAN-FD 应答帧 */
-    canfd_protocol_t response_frame;    /**< 应答帧数据（固定 22 字节） */
+    canfd_protocol_t response_frame;    /**< 应答帧数据 */
 
     /* RS-485 命令追踪 */
     uint8_t pending_cmd;               /**< 发起操作的原 CAN 命令码 */

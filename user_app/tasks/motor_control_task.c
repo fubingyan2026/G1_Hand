@@ -40,9 +40,6 @@
 /** @brief 解析器/打包器输出缓冲区大小 */
 #define PROTO_OUTPUT_BUF_SIZE  64U
 
-/** @brief 电机名称字符串长度 */
-#define MOTOR_NAME_MAX_LEN     12U
-
 /** @brief 协议帧头 */
 static const uint8_t s_proto_header[] = { MOTOR_CONTROL_HEADER_VAL };
 
@@ -69,8 +66,6 @@ static const uint8_t s_bytes_to_dlc[65] = {
 /* Private variables ---------------------------------------------------------*/
 
 static drv_can_context_t* s_can_ctx;
-static motor_control_handle_t s_motor_instances[MOTOR_CONTROL_TASK_MAX_MOTORS];
-static char s_motor_names[MOTOR_CONTROL_TASK_MAX_MOTORS][MOTOR_NAME_MAX_LEN];
 
 /* --- 协议解析器（RX）--- */
 static protocol_parser_context_t s_rx_parser;
@@ -83,6 +78,7 @@ static uint8_t s_packer_output_buf[PROTO_OUTPUT_BUF_SIZE];
 
 static volatile uint32_t s_rx_count;
 static uint32_t s_tx_count;
+static uint32_t s_rx_err_count;             /**< 协议帧处理错误计数 */
 static uint32_t s_ticks_per_ms;
 static uint32_t s_last_heartbeat_ticks;
 static bool s_safe_mode;
@@ -107,8 +103,6 @@ static protocol_packer_error_t motor_control_packer_checksum_cb(
 
 static bool motor_control_task_send_frame(uint32_t can_id,
     const uint8_t* data, uint8_t byte_len);
-static void motor_control_task_send_heartbeat(void);
-static uint16_t motor_control_task_get_fault_bitmap(void);
 
 /*
  * ============================================================================
@@ -116,7 +110,7 @@ static uint16_t motor_control_task_get_fault_bitmap(void);
  * ============================================================================
  */
 
-void motor_control_task_init(void)
+void motor_control_task_init_transport(void)
 {
     /* 1. CAN4 硬件配置 */
     const drv_can_config_t can4_config = {
@@ -199,60 +193,7 @@ void motor_control_task_init(void)
         return;
     }
 
-    /* 4. 初始化 motor_control 服务 */
-    motor_control_error_t mc_err = motor_control_init();
-    if (MOTOR_CONTROL_IS_ERR(mc_err)) {
-        printf("[MOTOR_CTRL_TASK] ERROR: motor_control init failed: %d\n",
-            (int)mc_err);
-        return;
-    }
-
-    /* 5. 注册 9 个电机 */
-    uint8_t idx = 0;
-
-    for (uint8_t id = 1; id <= 5; id++) {
-        snprintf(s_motor_names[idx], sizeof(s_motor_names[0]),
-            "motor_%u", (unsigned int)id);
-        motor_control_config_t cfg = {
-            .name = s_motor_names[idx],
-            .motor_id = id,
-            .finger_motor_id = id,
-            .finger_port = RS485_PORT_MOTOR1,
-        };
-        memset(&s_motor_instances[idx], 0, sizeof(motor_control_handle_t));
-        mc_err = motor_control_register_static(&cfg, &s_motor_instances[idx]);
-        if (MOTOR_CONTROL_IS_OK(mc_err)) {
-            finger_set_response_callback(s_motor_instances[idx].finger,
-                motor_control_on_finger_response, &s_motor_instances[idx]);
-        } else {
-            printf("[MOTOR_CTRL_TASK] Register motor_%u (PORT1) failed: %d\n",
-                (unsigned int)id, (int)mc_err);
-        }
-        idx++;
-    }
-
-    for (uint8_t id = 6; id <= 9; id++) {
-        snprintf(s_motor_names[idx], sizeof(s_motor_names[0]),
-            "motor_%u", (unsigned int)id);
-        motor_control_config_t cfg = {
-            .name = s_motor_names[idx],
-            .motor_id = id,
-            .finger_motor_id = id,
-            .finger_port = RS485_PORT_MOTOR2,
-        };
-        memset(&s_motor_instances[idx], 0, sizeof(motor_control_handle_t));
-        mc_err = motor_control_register_static(&cfg, &s_motor_instances[idx]);
-        if (MOTOR_CONTROL_IS_OK(mc_err)) {
-            finger_set_response_callback(s_motor_instances[idx].finger,
-                motor_control_on_finger_response, &s_motor_instances[idx]);
-        } else {
-            printf("[MOTOR_CTRL_TASK] Register motor_%u (PORT2) failed: %d\n",
-                (unsigned int)id, (int)mc_err);
-        }
-        idx++;
-    }
-
-    /* 6. 计算 MCHTMR ticks/ms */
+    /* 4. 计算 MCHTMR ticks/ms */
     uint32_t mchtmr_freq = clock_get_frequency(clock_mchtmr0);
     s_ticks_per_ms = mchtmr_freq / 1000U;
     if (s_ticks_per_ms == 0) {
@@ -262,12 +203,19 @@ void motor_control_task_init(void)
     s_last_heartbeat_ticks = motor_control_task_get_ticks();
     s_rx_count = 0;
     s_tx_count = 0;
+    s_rx_err_count = 0;
     s_safe_mode = false;
     s_ep_warned = false;
 
-    printf("[MOTOR_CTRL_TASK] Initialized: CAN4 1M/5M, %u motors, "
-        "heartbeat %ums (parser + packer)\n",
-        MOTOR_CONTROL_TASK_MAX_MOTORS, HEARTBEAT_INTERVAL_MS);
+    printf("[MOTOR_CTRL_TASK] Transport initialized: CAN4 1M/5M "
+        "(parser + packer)\n");
+}
+
+void motor_control_task_init(void)
+{
+    /* @deprecated 向后兼容空壳，实际初始化由 motor_link_task_init() 完成 */
+    (void)printf("[MOTOR_CTRL_TASK] motor_control_task_init() is deprecated, "
+        "use motor_link_task_init() instead\n");
 }
 
 /*
@@ -336,50 +284,16 @@ void motor_control_task_poll(void)
             const canfd_protocol_t* proto = (const canfd_protocol_t*)frame_data;
 
             if (!s_safe_mode) {
-                (void)motor_control_process_rx_frame(proto);
+                motor_control_error_t mc_err = motor_control_process_rx_frame(proto);
+                if (MOTOR_CONTROL_IS_ERR(mc_err)) {
+                    s_rx_err_count++;
+                }
             }
         }
     }
 
     /* 4. 更新解析器空闲计时器 */
     (void)protocol_parser_tick(&s_rx_parser);
-
-    /* 5. 扫描所有电机，用打包器构建并发送应答帧 */
-    for (uint8_t i = 0; i < MOTOR_CONTROL_TASK_MAX_MOTORS; i++) {
-        motor_control_handle_t* h = &s_motor_instances[i];
-
-        if (!h->initialized) {
-            continue;
-        }
-
-        canfd_protocol_t resp;
-        if (motor_control_pop_response(h, &resp)) {
-            /* 提取 payload: cmd + flags + datalen + data[0..datalen-1] */
-            uint16_t payload_len = (uint16_t)(3U + resp.datalen);
-            uint8_t* frame_out = NULL;
-            uint16_t frame_out_len = 0;
-
-            protocol_packer_error_t pack_err = protocol_packer_pack(
-                &s_tx_packer, &resp.cmd, payload_len,
-                &frame_out, &frame_out_len);
-
-            if (pack_err == PROTOCOL_PACKER_OK && frame_out && frame_out_len > 0) {
-                if (motor_control_task_send_frame(MOTOR_CONTROL_CAN_ID_RESP,
-                        frame_out, (uint8_t)frame_out_len)) {
-                    s_tx_count++;
-                }
-            }
-        }
-    }
-
-    /* 6. 周期性心跳 */
-    {
-        uint32_t elapsed = now - s_last_heartbeat_ticks;
-        if (elapsed >= HEARTBEAT_INTERVAL_MS * s_ticks_per_ms) {
-            s_last_heartbeat_ticks = now;
-            motor_control_task_send_heartbeat();
-        }
-    }
 }
 
 /*
@@ -418,7 +332,9 @@ static uint16_t motor_control_parser_get_len_cb(uint8_t* buffer, uint16_t len)
 
     uint8_t datalen = buffer[3];
 
-    if (datalen > MOTOR_CONTROL_DATA_MAX || (datalen & 1U)) {
+    /* 仅允许固定长度: 0 (查询), 18 (2B×9电机), 36 (4B×9电机 SET_POSITION_SPEED) */
+    if (datalen != 0 && datalen != MOTOR_CONTROL_DATA_BYTES
+        && datalen != MOTOR_CONTROL_DATA_MAX) {
         return 0;
     }
 
@@ -431,19 +347,24 @@ static protocol_parser_error_t motor_control_parser_check_cb(uint8_t* buffer,
 {
     /*
      * 帧结构: [header][cmd][flags][datalen][data...][crc][footer]
-     * XOR 校验: buffer[0] ^ ... ^ buffer[len-3] == buffer[len-2]
-     * (crc 位于倒数第二字节, footer 位于最后一字节)
+     * 校验和 = sum(data[0..datalen-1]) & 0xFF，与 buffer[4+datalen] 处的 crc_check 比较
+     * buffer 布局: [0]=header, [1]=cmd, [2]=flags, [3]=datalen,
+     *              [4..4+datalen-1]=data, [4+datalen]=crc_check, [5+datalen]=footer
      */
-    if (!buffer || len < 3) {
+    if (!buffer || len < 6) {
         return PROTOCOL_PARSER_ERROR_CHECKSUM;
     }
 
-    uint8_t xor_val = 0;
-    for (uint16_t i = 0; i < len - 2; i++) {
-        xor_val ^= buffer[i];
+    uint8_t datalen = buffer[3];
+    uint32_t sum = 0;
+    for (uint16_t i = 0; i < datalen; i++) {
+        sum += buffer[4 + i];
     }
 
-    if (xor_val != buffer[len - 2]) {
+    uint8_t expected = (uint8_t)(sum & 0xFFU);
+    uint8_t received = buffer[4 + datalen]; /* crc_check 紧接 data 之后 */
+
+    if (expected != received) {
         return PROTOCOL_PARSER_ERROR_CHECKSUM;
     }
 
@@ -464,12 +385,24 @@ static protocol_packer_error_t motor_control_packer_checksum_cb(
         return PROTOCOL_PACKER_ERROR_NULL_PTR;
     }
 
-    uint8_t xor_val = 0;
-    for (uint16_t i = 0; i < len; i++) {
-        xor_val ^= data[i];
+    /*
+     * 帧布局: data[0]=header, data[1]=cmd, data[2]=flags, data[3]=datalen,
+     *         data[4..4+datalen-1] = 电机数据
+     * 校验和 = sum(data[4..4+datalen-1]) & 0xFF
+     */
+    if (len < 4) {
+        *checksum_out = 0;
+        *checksum_len = 1;
+        return PROTOCOL_PACKER_OK;
     }
 
-    *checksum_out = xor_val;
+    uint8_t datalen = data[3];
+    uint32_t sum = 0;
+    for (uint16_t i = 0; i < datalen; i++) {
+        sum += data[4 + i];
+    }
+
+    *checksum_out = (uint8_t)(sum & 0xFFU);
     *checksum_len = 1;
 
     return PROTOCOL_PACKER_OK;
@@ -505,7 +438,35 @@ static bool motor_control_task_send_frame(uint32_t can_id,
     return (err == DRV_CAN_OK);
 }
 
-static void motor_control_task_send_heartbeat(void)
+void motor_control_task_flush_response(motor_control_handle_t* h)
+{
+    if (!h || !h->initialized) {
+        return;
+    }
+
+    canfd_protocol_t resp;
+    if (!motor_control_pop_response(h, &resp)) {
+        return;
+    }
+
+    /* 提取 payload: cmd + flags + datalen + data[0..datalen-1] */
+    uint16_t payload_len = (uint16_t)(3U + resp.datalen);
+    uint8_t* frame_out = NULL;
+    uint16_t frame_out_len = 0;
+
+    protocol_packer_error_t pack_err = protocol_packer_pack(
+        &s_tx_packer, &resp.cmd, payload_len,
+        &frame_out, &frame_out_len);
+
+    if (pack_err == PROTOCOL_PACKER_OK && frame_out && frame_out_len > 0) {
+        if (motor_control_task_send_frame(MOTOR_CONTROL_CAN_ID_RESP,
+                frame_out, (uint8_t)frame_out_len)) {
+            s_tx_count++;
+        }
+    }
+}
+
+void motor_control_task_send_heartbeat(uint16_t fault_bitmap)
 {
     /*
      * 心跳 payload: cmd=0xF0, flags=0, datalen=4,
@@ -517,7 +478,6 @@ static void motor_control_task_send_heartbeat(void)
     hb_payload[2] = 4; /* datalen */
 
     drv_can_state_t bus_state = drv_can_get_state(s_can_ctx);
-    uint16_t fault_bitmap = motor_control_task_get_fault_bitmap();
     hb_payload[3] = (uint8_t)bus_state;
     hb_payload[4] = MOTOR_CONTROL_TASK_MAX_MOTORS;
     hb_payload[5] = (uint8_t)(fault_bitmap & 0xFFU);
@@ -533,16 +493,4 @@ static void motor_control_task_send_heartbeat(void)
         (void)motor_control_task_send_frame(MOTOR_CONTROL_CAN_ID_RESP,
             frame_out, (uint8_t)frame_out_len);
     }
-}
-
-static uint16_t motor_control_task_get_fault_bitmap(void)
-{
-    uint16_t bitmap = 0;
-    for (uint8_t i = 0; i < MOTOR_CONTROL_TASK_MAX_MOTORS; i++) {
-        if (s_motor_instances[i].initialized
-            && s_motor_instances[i].fault_flags != 0) {
-            bitmap |= (uint16_t)(1U << i);
-        }
-    }
-    return bitmap;
 }

@@ -40,12 +40,12 @@ user_app/                   — application layer, main entry
   tasks/                    — cooperative poll-loop tasks
 drivers/
   bsp/                      — board support (UART, GPIO HAL)
-  device_driver/            — peripheral drivers (RS-485, LED)
-  device/motor/             — motor control logic
+  device_driver/            — peripheral drivers (RS-485, LED, CAN-FD)
 middlewares/
   utils/                    — kfifo (ring buffer), clist (linked list)
   fsm/                      — generic finite state machine
-  service/                  — service modules (e.g. LED FSM management)
+  protocol_tools/           — protocol_packer, protocol_parser
+service/                    — service modules (LED FSM, finger motor, CAN-FD bridge)
 board/hpm6e00_ethercat_slave/ — board-level pinmux and init
 ```
 
@@ -53,7 +53,7 @@ All drivers use HPM SDK peripheral HAL (`hpm_uart_drv`, `hpm_dmav2_drv`, etc.). 
 
 ## Hardware
 
-Peripheral pinout documented in `board_connect.md`. Key interfaces: 3× RS-485 (UART15, UART18, UART8), CAN4, EtherCAT, debug UART0 at 115200 8N1.
+Peripheral pinout documented in `board_connect.md`. Key interfaces: 3× RS-485 (UART15, UART14, UART8) at 2 Mbps, CAN4 (CAN-FD: 1M/5M), EtherCAT, debug UART0 at 115200 8N1.
 
 ## Code conventions
 
@@ -62,6 +62,10 @@ Peripheral pinout documented in `board_connect.md`. Key interfaces: 3× RS-485 (
 - **Naming**: `bsp_`, `drv_` prefixes; `snake_case` for functions/variables; `UPPER_CASE` for macros
 - **Types**: `uint8_t`, `uint32_t`, `stdbool.h` — no proprietary typedefs
 
-## Known out-of-date sources
+## Reference documents
 
-`CLAUDE.md` contains stale claims (drive stubs, empty dirs, wrong board name). Trust `AGENTS.md` and executable sources (CMakeLists.txt, actual `.c` files) over that file.
+- `CLAUDE.md` — full project guidance with build system, architecture, coding conventions
+- `MODULE_CODING_GUIDE.md` — detailed C coding standard (must follow when generating code)
+- `board_connect.md` — MCU pin assignments
+- `can_protocol.md` — CAN-FD motor control protocol specification
+- 微型手指执行器用户手册 V1.4 — third-party finger actuator RS-485 protocol

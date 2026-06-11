@@ -11,8 +11,8 @@
  * @date    2026-06-11
  * @brief   CAN-FD 电机控制桥接服务层实现
  *
- * 协议帧: [header='s'][cmd][flags][datalen][data:N][crc_check][ender='e']
- * 可变长度: 6+N 字节 (N=datalen, 0-18, 偶数)
+ * 协议帧: [header='s'][cmd][flags][datalen][data:N][crc_check(累加和)][ender='e']
+ * 可变长度: 6+N 字节 (N=datalen, 0/18/36)
  */
 
 /* Includes ------------------------------------------------------------------*/
@@ -241,9 +241,11 @@ motor_control_error_t motor_control_process_rx_frame(
         return MOTOR_CONTROL_ERROR_UNINITIALIZED;
     }
 
-    /* 校验帧头帧尾（应由 task 层提前校验，此处为防御） */
-    if (protocol->header != MOTOR_CONTROL_HEADER_VAL
-        || protocol->ender != MOTOR_CONTROL_ENDER_VAL) {
+    /*
+     * 帧头/帧尾/CRC 已由 protocol_parser 层完成校验，
+     * 此处仅校验 header（偏移量 0 对所有帧大小均正确）做最后防御。
+     */
+    if (protocol->header != MOTOR_CONTROL_HEADER_VAL) {
         return MOTOR_CONTROL_ERROR_BAD_FRAME;
     }
 
@@ -258,23 +260,21 @@ motor_control_error_t motor_control_process_rx_frame(
     bool is_query = (cmd >= MOTOR_CONTROL_CMD_QUERY_STATUS
         && cmd <= MOTOR_CONTROL_CMD_QUERY_CURRENT);
 
-    /* 校验 datalen 合法性 */
+    /* 校验 datalen — 固定长度: 查询=0, 2B命令=18, 4B命令=36 */
     bool is_4byte_cmd = (cmd == MOTOR_CONTROL_CMD_SET_POSITION_SPEED);
-    uint8_t entry_bytes = is_4byte_cmd ? 4U : 2U;
+    uint8_t expected_datalen = is_4byte_cmd ? MOTOR_CONTROL_DATA_MAX
+        : (is_query ? 0U : MOTOR_CONTROL_DATA_BYTES);
 
-    if (datalen > MOTOR_CONTROL_DATA_MAX || (datalen % entry_bytes) != 0) {
+    if (datalen != expected_datalen) {
         return MOTOR_CONTROL_ERROR_BAD_FRAME;
     }
-
-    uint8_t motor_count = datalen / entry_bytes;
 
     motor_control_error_t result = MOTOR_CONTROL_OK;
 
     if (is_control) {
         if (is_4byte_cmd) {
-            /* SET_POSITION_SPEED: 4 字节/电机 [pos:u16][speed:i16] */
-            for (uint8_t i = 0; i < motor_count; i++) {
-                uint8_t motor_id = i + 1U;
+            /* SET_POSITION_SPEED: 固定 36 字节，4 字节/电机 [pos:u16][speed:i16] */
+            for (uint8_t motor_id = 1; motor_id <= MOTOR_CONTROL_MOTOR_NUMS; motor_id++) {
                 uint16_t pos = MOTOR_CONTROL_DATA_POS(protocol, motor_id);
                 int16_t speed_val = MOTOR_CONTROL_DATA_SPD(protocol, motor_id);
 
@@ -300,9 +300,8 @@ motor_control_error_t motor_control_process_rx_frame(
                 }
             }
         } else {
-            /* 普通控制命令：2 字节/电机 */
-            for (uint8_t i = 0; i < motor_count; i++) {
-                uint8_t motor_id = i + 1U;
+            /* 普通控制命令：固定 18 字节，2 字节/电机 × 9 */
+            for (uint8_t motor_id = 1; motor_id <= MOTOR_CONTROL_MOTOR_NUMS; motor_id++) {
                 uint16_t val = MOTOR_CONTROL_DATA_U16(protocol, motor_id);
 
                 if (val == 0) {
@@ -465,14 +464,12 @@ void motor_control_on_finger_response(finger_handle_t* finger_handle,
         return;
     }
 
-    /* 3. 构建控制应答帧 (datalen=2, 单个电机) */
+    /* 3. 构建控制应答帧，error_code 写入 data[(motor_id-1)*2] 位置 */
     canfd_protocol_t resp;
     memset(&resp, 0, sizeof(resp));
-    resp.header = MOTOR_CONTROL_HEADER_VAL;
-    resp.ender = MOTOR_CONTROL_ENDER_VAL;
     resp.cmd = handle->pending_cmd;
     resp.flags = 0;
-    resp.datalen = 2; /* 单电机 2 字节 error_code */
+    resp.datalen = MOTOR_CONTROL_DATA_BYTES; /* 固定 18 字节 = 9 电机 × 2 字节 */
 
     uint16_t error_code = success ? (uint16_t)MOTOR_CONTROL_OK
         : (uint16_t)MOTOR_CONTROL_ERROR_MOTOR_FAULT;
@@ -570,11 +567,9 @@ static void motor_control_build_query_response(uint8_t cmd,
     }
 
     memset(p_response, 0, sizeof(canfd_protocol_t));
-    p_response->header = MOTOR_CONTROL_HEADER_VAL;
-    p_response->ender = MOTOR_CONTROL_ENDER_VAL;
     p_response->cmd = cmd;
     p_response->flags = 0;
-    p_response->datalen = MOTOR_CONTROL_DATA_MAX; /* 始终填充全部 9 电机 */
+    p_response->datalen = MOTOR_CONTROL_DATA_BYTES; /* 9 电机 × 2 字节 = 18 */
 
     /* 遍历 9 个电机，填充缓存值 */
     for (uint8_t motor_id = 1; motor_id <= MOTOR_CONTROL_MOTOR_NUMS; motor_id++) {
