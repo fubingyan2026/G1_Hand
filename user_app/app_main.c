@@ -14,7 +14,7 @@
 
 #include "board.h"
 #include "drv_led.h"
-#include "canfd_task.h"
+#include "motor_control_task.h"
 #include "finger.h"
 #include "finger_task.h"
 #include "led_task.h"
@@ -74,14 +74,14 @@ int main(void)
     /* 初始化所有电机：使能 + 速度模式 */
     finger_init_all_motors();
 
-    /* 初始化 CAN-FD 测试任务 (必须在 ESC 引脚初始化之后) */
-    canfd_task_init();
+    /* 初始化 CAN-FD 电机控制桥接任务 (必须在 finger_task_init 之后) */
+    motor_control_task_init();
 
     /* 主循环 */
     while (1) {
         led_task_poll();
         finger_task_poll();
-        canfd_task_poll();
+        motor_control_task_poll();
     }
 
     return 0;

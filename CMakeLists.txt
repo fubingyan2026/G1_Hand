@@ -37,11 +37,12 @@ sdk_app_src(user_app/app_main.c)
 sdk_app_src(user_app/tasks/uart_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
 sdk_app_src(user_app/tasks/finger_task.c)
-sdk_app_src(user_app/tasks/canfd_task.c)
+sdk_app_src(user_app/tasks/motor_control_task.c)
 
 # --- 服务层 (service) ---
 sdk_app_src(service/led.c)
 sdk_app_src(service/finger.c)
+sdk_app_src(service/motor_control.c)
 
 # --- 中间件：数据结构与算法 (middlewares/utils) ---
 sdk_app_src(middlewares/utils/kfifo.c)
