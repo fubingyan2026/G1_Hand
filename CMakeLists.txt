@@ -37,6 +37,7 @@ sdk_app_src(user_app/app_main.c)
 sdk_app_src(user_app/tasks/uart_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
 sdk_app_src(user_app/tasks/finger_task.c)
+sdk_app_src(user_app/tasks/canfd_task.c)
 
 # --- 服务层 (service) ---
 sdk_app_src(service/led.c)
@@ -54,6 +55,7 @@ sdk_app_src(middlewares/protocol_tools/protocol_packer.c)
 # --- 设备驱动层 (drivers/device_driver) ---
 sdk_app_src(drivers/device_driver/drv_rs485.c)
 sdk_app_src(drivers/device_driver/drv_led.c)
+sdk_app_src(drivers/device_driver/drv_can.c)
 
 # --- BSP 层 (drivers/bsp) ---
 sdk_app_src(drivers/bsp/bsp_uart.c)

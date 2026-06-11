@@ -14,6 +14,7 @@
 
 #include "board.h"
 #include "drv_led.h"
+#include "canfd_task.h"
 #include "finger.h"
 #include "finger_task.h"
 #include "led_task.h"
@@ -23,18 +24,6 @@
 
 /** @brief 速度值：最高位为方向，bit31=1 正转，速度值 500 RPM */
 #define FINGER_INIT_SPEED   (0x80000000UL | 3000UL)
-
-/**
- * @brief 等待电机命令完成（发送+应答或超时）
- * @param motor 电机句柄
- */
-static void finger_wait_done(finger_handle_t* motor)
-{
-    while (motor->response_pending) {
-        led_task_poll();
-        finger_task_poll();
-    }
-}
 
 /**
  * @brief 初始化所有手指电机：使能 + 速度模式 500RPM
@@ -85,10 +74,14 @@ int main(void)
     /* 初始化所有电机：使能 + 速度模式 */
     finger_init_all_motors();
 
+    /* 初始化 CAN-FD 测试任务 (必须在 ESC 引脚初始化之后) */
+    canfd_task_init();
+
     /* 主循环 */
     while (1) {
         led_task_poll();
         finger_task_poll();
+        canfd_task_poll();
     }
 
     return 0;

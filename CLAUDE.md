@@ -62,6 +62,8 @@ user_app/                          — Application layer
   tasks/                           — Cooperative poll tasks
     led_task.c                     — LED status indicator (wires drv_led → service/led)
     uart_task.c                    — RS-485 comms task (currently disabled in main)
+    finger_task.c                  — Finger motor multi-port RS-485 scheduler
+    canfd_task.c                   — CAN-FD send/receive test task (CAN4, PA16/PA17/PA18)
 drivers/
   bsp/                             — Board support package (thin HAL wrappers)
     bsp_gpio.c                     — GPIO init/read/write/toggle (wraps hpm_gpio_drv)
@@ -69,6 +71,7 @@ drivers/
   device_driver/                   — Peripheral device drivers
     drv_led.c                      — PF02 GPIO LED control (on/off/toggle/set/read)
     drv_rs485.c                    — 3-port RS-485 half-duplex driver (interrupt-driven TX queue + DMA ring RX)
+    drv_can.c                      — Multi-instance CAN-FD driver (MCAN ISR + kfifo RX, blocking/non-blocking TX)
 middlewares/
   utils/                           — Data structure libraries
     kfifo.c                        — Linux-kernel-style ring buffer (power-of-2, thread-safe via MSTATUS CSR)
@@ -94,11 +97,16 @@ app_main.c
   │           ├── fsm
   │           ├── kfifo
   │           └── clist
+  ├── finger_task
+  │     ├── drv_rs485 ── bsp_uart ── hpm_uart_drv, hpm_dmav2_drv, hpm_dmamux_drv (SDK)
+  │     ├── bsp_gpio
+  │     ├── fsm
+  │     ├── protocol_parser ── kfifo
+  │     └── service/finger
+  ├── canfd_task
+  │     └── drv_can ── hpm_mcan_drv (SDK), kfifo
   └── uart_task (disabled)
         └── drv_rs485
-              ├── bsp_uart ── hpm_uart_drv, hpm_dmav2_drv, hpm_dmamux_drv (SDK)
-              ├── bsp_gpio
-              └── kfifo
 ```
 
 ### Key architectural patterns
