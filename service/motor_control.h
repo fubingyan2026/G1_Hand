@@ -260,6 +260,15 @@ motor_control_error_t motor_control_process_rx_frame(
 bool motor_control_pop_response(motor_control_handle_t* handle,
     canfd_protocol_t* p_response);
 
+/* --- 工具函数 --- */
+
+/**
+ * @brief 将 CAN-FD 协议命令码转换为中文助记符
+ * @param cmd 命令码
+ * @return 中文命令名称（静态字符串，不可释放）
+ */
+const char* motor_control_cmd_name(uint8_t cmd);
+
 /* --- 状态查询（本地缓存，不发起 RS-485 通讯） --- */
 
 uint8_t motor_control_get_status(const motor_control_handle_t* handle);

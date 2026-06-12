@@ -270,14 +270,24 @@ motor_control_error_t motor_control_process_rx_frame(
                                             : (is_query ? 0U : MOTOR_CONTROL_DATA_BYTES);
 
     if (datalen != expected_datalen) {
+        LOG_W("motor_ctrl", "帧 datalen 不匹配: cmd=%s(0x%02X) datalen=%u 期望=%u",
+            motor_control_cmd_name(cmd), (unsigned int)cmd,
+            (unsigned int)datalen, (unsigned int)expected_datalen);
         return MOTOR_CONTROL_ERROR_BAD_FRAME;
     }
+
+    /* 打印接收到的 CAN 命令 */
+    LOG_I("motor_ctrl", "收到 CAN 帧 → %s(0x%02X) flags=0x%02X datalen=%u 应答=%s",
+        motor_control_cmd_name(cmd), (unsigned int)cmd,
+        (unsigned int)flags, (unsigned int)datalen,
+        ack_requested ? "是" : "否");
 
     motor_control_error_t result = MOTOR_CONTROL_OK;
 
     if (is_control) {
         if (is_4byte_cmd) {
             /* SET_POSITION_SPEED: 固定 36 字节，4 字节/电机 [pos:u16][speed:i16] */
+            LOG_I("motor_ctrl", "  → 位置+速度闭环命令, 遍历9电机...");
             for (uint8_t motor_id = 1; motor_id <= MOTOR_CONTROL_MOTOR_NUMS; motor_id++) {
                 uint16_t pos = MOTOR_CONTROL_DATA_POS(protocol, motor_id);
                 int16_t speed_val = MOTOR_CONTROL_DATA_SPD(protocol, motor_id);
@@ -288,13 +298,19 @@ motor_control_error_t motor_control_process_rx_frame(
 
                 motor_control_handle_t* handle = motor_control_get_by_id(motor_id);
                 if (!handle) {
+                    LOG_W("motor_ctrl", "  → 电机%u 未注册, 跳过", (unsigned int)motor_id);
                     result = MOTOR_CONTROL_ERROR_NOT_FOUND;
                     continue;
                 }
                 if (handle->command_in_flight) {
+                    LOG_W("motor_ctrl", "  → 电机%u 忙(上一条命令未完成), 跳过",
+                        (unsigned int)motor_id);
                     result = MOTOR_CONTROL_ERROR_MOTOR_BUSY;
                     continue;
                 }
+
+                LOG_I("motor_ctrl", "  → RS-485 [电机%u] 位置+速度闭环: pos=%.1f° speed=%d RPM",
+                    (unsigned int)motor_id, (float)pos / 10.0f, (int)speed_val);
 
                 finger_error_t ferr = finger_set_position_speed(
                     handle->finger, (uint32_t)pos, (uint32_t)(int32_t)speed_val);
@@ -306,11 +322,14 @@ motor_control_error_t motor_control_process_rx_frame(
                     handle->ack_requested = ack_requested;
                     handle->has_pending_response = false;
                 } else {
+                    LOG_E("motor_ctrl", "  → RS-485 [电机%u] 位置+速度命令失败, 错误码=%d",
+                        (unsigned int)motor_id, (int)ferr);
                     result = MOTOR_CONTROL_ERROR_RS485_FAIL;
                 }
             }
         } else {
             /* 普通控制命令：固定 18 字节，2 字节/电机 × 9 */
+            LOG_I("motor_ctrl", "  → %s, 遍历9电机...", motor_control_cmd_name(cmd));
             for (uint8_t motor_id = 1; motor_id <= MOTOR_CONTROL_MOTOR_NUMS; motor_id++) {
                 uint16_t val = MOTOR_CONTROL_DATA_U16(protocol, motor_id);
 
@@ -320,10 +339,13 @@ motor_control_error_t motor_control_process_rx_frame(
 
                 motor_control_handle_t* handle = motor_control_get_by_id(motor_id);
                 if (!handle) {
+                    LOG_W("motor_ctrl", "  → 电机%u 未注册, 跳过", (unsigned int)motor_id);
                     result = MOTOR_CONTROL_ERROR_NOT_FOUND;
                     continue;
                 }
                 if (handle->command_in_flight) {
+                    LOG_W("motor_ctrl", "  → 电机%u 忙(上一条命令未完成), 跳过",
+                        (unsigned int)motor_id);
                     result = MOTOR_CONTROL_ERROR_MOTOR_BUSY;
                     continue;
                 }
@@ -342,6 +364,7 @@ motor_control_error_t motor_control_process_rx_frame(
         }
     } else if (is_query) {
         /* 查询命令：从缓存构建应答帧 */
+        LOG_I("motor_ctrl", "  → 查询命令, 从缓存构建应答帧...");
         canfd_protocol_t response;
         motor_control_build_query_response(cmd, &response);
 
@@ -351,9 +374,15 @@ motor_control_error_t motor_control_process_rx_frame(
         if (first) {
             first->response_frame = response;
             first->has_pending_response = true;
+            LOG_I("motor_ctrl", "  → 查询应答帧已就绪, 待发送");
         }
     } else {
+        LOG_W("motor_ctrl", "  → 未知命令类型 cmd=0x%02X", (unsigned int)cmd);
         result = MOTOR_CONTROL_ERROR_INVALID_PARAM;
+    }
+
+    if (MOTOR_CONTROL_IS_ERR(result)) {
+        LOG_W("motor_ctrl", "  → 帧处理完成, 有错误: %d", (int)result);
     }
 
     return result;
@@ -373,6 +402,12 @@ bool motor_control_pop_response(motor_control_handle_t* handle,
     if (p_response) {
         *p_response = handle->response_frame;
     }
+
+    LOG_D("motor_ctrl", "弹出应答帧: 电机%u cmd=0x%02X(%s) datalen=%u",
+        (unsigned int)handle->config.motor_id,
+        (unsigned int)handle->response_frame.cmd,
+        motor_control_cmd_name(handle->response_frame.cmd),
+        (unsigned int)handle->response_frame.datalen);
 
     handle->has_pending_response = false;
 
@@ -439,6 +474,8 @@ motor_control_error_t motor_control_emergency_stop_all(void)
         return MOTOR_CONTROL_ERROR_UNINITIALIZED;
     }
 
+    LOG_W("motor_ctrl", "紧急停止全部电机!");
+
     clist_for_each_entry(h, &s_motor_control_head, node)
     {
         if (h->finger) {
@@ -475,6 +512,12 @@ void motor_control_on_finger_response(finger_handle_t* finger_handle,
     handle->position = finger_get_position(finger_handle);
     handle->mode = finger_get_mode(finger_handle);
 
+    LOG_D("motor_ctrl", "电机%u RS-485 应答: %s, 状态=0x%02X, 位置=%u",
+        (unsigned int)handle->config.motor_id,
+        success ? "成功" : "失败",
+        (unsigned int)handle->status,
+        (unsigned int)handle->position);
+
     /* 2. 若主机未请求应答，直接清除飞行标志 */
     if (!handle->ack_requested) {
         handle->command_in_flight = false;
@@ -492,11 +535,54 @@ void motor_control_on_finger_response(finger_handle_t* finger_handle,
                                   : (uint16_t)MOTOR_CONTROL_ERROR_MOTOR_FAULT;
     motor_control_set_data(&resp, handle->config.motor_id, error_code);
 
+    LOG_I("motor_ctrl", "电机%u 应答帧已构建: cmd=%s error=0x%04X",
+        (unsigned int)handle->config.motor_id,
+        motor_control_cmd_name(handle->pending_cmd),
+        (unsigned int)error_code);
+
     /* 4. 存入应答帧 */
     handle->response_frame = resp;
     handle->has_pending_response = true;
     handle->command_in_flight = false;
     handle->ack_requested = false;
+}
+
+/*
+ * ============================================================================
+ * 公共工具函数 — 命令码转中文助记符
+ * ============================================================================
+ */
+
+const char* motor_control_cmd_name(uint8_t cmd)
+{
+    switch (cmd) {
+    case MOTOR_CONTROL_CMD_SET_SPEED:
+        return "设置速度";
+    case MOTOR_CONTROL_CMD_SET_POSITION:
+        return "设置位置";
+    case MOTOR_CONTROL_CMD_SET_CURRENT:
+        return "设置电流";
+    case MOTOR_CONTROL_CMD_START:
+        return "启动";
+    case MOTOR_CONTROL_CMD_STOP:
+        return "急停";
+    case MOTOR_CONTROL_CMD_CLEAR_FAULT:
+        return "清除故障";
+    case MOTOR_CONTROL_CMD_SET_POSITION_SPEED:
+        return "位置+速度闭环";
+    case MOTOR_CONTROL_CMD_QUERY_STATUS:
+        return "查询状态";
+    case MOTOR_CONTROL_CMD_QUERY_POSITION:
+        return "查询位置";
+    case MOTOR_CONTROL_CMD_QUERY_SPEED:
+        return "查询速度";
+    case MOTOR_CONTROL_CMD_QUERY_CURRENT:
+        return "查询电流";
+    case MOTOR_CONTROL_CMD_HEARTBEAT:
+        return "心跳";
+    default:
+        return "未知命令";
+    }
 }
 
 /*
@@ -526,6 +612,8 @@ static motor_control_error_t motor_control_dispatch_control(
             finger_speed = (uint32_t)(-speed);
         }
         handle->speed = speed;
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 设置速度=%d RPM (raw=0x%04X)",
+            (unsigned int)handle->config.motor_id, (int)speed, (unsigned int)val);
         finger_err = finger_set_speed(handle->finger, finger_speed);
         break;
     }
@@ -537,6 +625,9 @@ static motor_control_error_t motor_control_dispatch_control(
         uint32_t angle_tenth = val; /* 度 × 10 */
         uint32_t position = angle_tenth * 1080UL * 2UL / 10UL; /* 简化: ×216 */
         handle->position = val; /* 缓存原始角度×10 */
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 设置位置=%.1f° (raw=0x%04X)",
+            (unsigned int)handle->config.motor_id,
+            (float)val / 10.0f, (unsigned int)val);
         finger_err = finger_set_position(handle->finger, position, handle->current);
         break;
     }
@@ -545,6 +636,8 @@ static motor_control_error_t motor_control_dispatch_control(
         /* val = uint16 电流 (mA 或原始值) */
         /* finger 无独立电流 API，通过 finger_set_position 的 torque 参数实现 */
         handle->current = val;
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 设置电流=%u mA",
+            (unsigned int)handle->config.motor_id, (unsigned int)val);
         finger_err = finger_set_position(handle->finger,
             0, /* 使用默认位置 */
             val);
@@ -552,24 +645,32 @@ static motor_control_error_t motor_control_dispatch_control(
     }
 
     case MOTOR_CONTROL_CMD_START:
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 启动",
+            (unsigned int)handle->config.motor_id);
         finger_err = finger_start(handle->finger);
         break;
 
     case MOTOR_CONTROL_CMD_STOP:
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 急停",
+            (unsigned int)handle->config.motor_id);
         finger_err = finger_emergency_stop(handle->finger);
         break;
 
     case MOTOR_CONTROL_CMD_CLEAR_FAULT:
+        LOG_I("motor_ctrl", "  → RS-485 [电机%u] 清除故障",
+            (unsigned int)handle->config.motor_id);
         finger_err = finger_clear_fault(handle->finger);
         break;
 
     default:
+        LOG_W("motor_ctrl", "  → RS-485 [电机%u] 未知命令 0x%02X",
+            (unsigned int)handle->config.motor_id, (unsigned int)cmd);
         return MOTOR_CONTROL_ERROR_INVALID_PARAM;
     }
 
     if (FINGER_IS_ERR(finger_err)) {
-        LOG_E("motor_ctrl", "手指命令 0x%02X 失败, 错误码=%d",
-            (unsigned int)cmd, (int)finger_err);
+        LOG_E("motor_ctrl", "  → RS-485 [电机%u] 命令失败, 错误码=%d",
+            (unsigned int)handle->config.motor_id, (int)finger_err);
         return MOTOR_CONTROL_ERROR_RS485_FAIL;
     }
 
@@ -623,4 +724,8 @@ static void motor_control_build_query_response(uint8_t cmd,
 
         motor_control_set_data(p_response, motor_id, val);
     }
+
+    LOG_I("motor_ctrl", "查询应答帧已构建: cmd=%s(0x%02X) datalen=%u",
+        motor_control_cmd_name(cmd), (unsigned int)cmd,
+        (unsigned int)MOTOR_CONTROL_DATA_BYTES);
 }

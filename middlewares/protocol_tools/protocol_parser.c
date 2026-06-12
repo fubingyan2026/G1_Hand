@@ -339,9 +339,10 @@ protocol_parser_error_t protocol_parser_parse(protocol_parser_context_t* ctx,
         if (ctx->idle_timer > idle_threshold) {
             ctx->idle_timer = 0;
             ctx->header_matched = false;
-            if (ctx->config.header_len == 0) {
-                kfifo_skip(&ctx->fifo, 1);
-            }
+            /* 丢弃前导垃圾字节以防止无限循环:
+             * 当 kfifo 中以非帧头字节开头时, header_len>0 的情况下
+             * 不清除该字节会导致每次 parse 都反复匹配同一个垃圾字节 */
+            kfifo_skip(&ctx->fifo, 1);
             return PROTOCOL_PARSER_ERROR_IDLE_TIMEOUT;
         }
         return PROTOCOL_PARSER_ERROR_INCOMPLETE;
