@@ -37,21 +37,21 @@ extern "C" {
  * 描述一个 CAN-FD 协议电机到 RS-485 物理电机的完整对应关系。
  */
 typedef struct {
-    uint8_t motor_id;           /**< CAN-FD 协议中的电机 ID（1-9） */
-    uint8_t finger_motor_id;    /**< 对应 RS-485 总线上的电机地址 */
-    rs485_port_t finger_port;   /**< 所属 RS-485 端口 */
+    uint8_t motor_id; /**< CAN-FD 协议中的电机 ID（1-9） */
+    uint8_t finger_motor_id; /**< 对应 RS-485 总线上的电机地址 */
+    rs485_port_t finger_port; /**< 所属 RS-485 端口 */
 } motor_link_entry_t;
 
 /* Exported constants --------------------------------------------------------*/
 
 /** @brief 系统中电机总数 */
-#define MOTOR_LINK_MAX_MOTORS  9U
+#define MOTOR_LINK_MAX_MOTORS 9U
 
 /** @brief PORT1（RS485_PORT_MOTOR1）上挂载的电机数量 */
-#define MOTOR_LINK_PORT1_COUNT  5U
+#define MOTOR_LINK_PORT1_COUNT 5U
 
 /** @brief PORT2（RS485_PORT_MOTOR2）上挂载的电机数量 */
-#define MOTOR_LINK_PORT2_COUNT  4U
+#define MOTOR_LINK_PORT2_COUNT 4U
 
 /* Exported functions prototypes ---------------------------------------------*/
 

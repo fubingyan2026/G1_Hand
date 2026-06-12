@@ -11,13 +11,12 @@
  * 使用 middlewares/service/led.c 库管理 PF02 状态指示灯：
  * - 通过 FSM 状态机控制 ON/OFF/BLINK_CODE 三种状态
  * - 闪烁完成后自动重新触发，实现循环闪烁
- * - 时间基准使用 MCHTMR 机器定时器（ms 精度）
+ * - 时间基准使用 bsp_systick 全局毫秒时间戳（millis）
  */
 
 #include "led_task.h"
+#include "bsp_systick.h"
 #include "drv_led.h"
-#include "hpm_clock_drv.h"
-#include "hpm_mchtmr_drv.h"
 #include "led.h"
 
 #define LED_TASK_DEFAULT_BLINK_COUNT 3 /**< 每次循环闪烁次数 */
@@ -25,16 +24,6 @@
 #define LED_TASK_DEFAULT_BLINK_WAIT_MS 1000 /**< 两次闪烁循环之间的等待间隔 (ms) */
 
 static led_handle_t s_led_handle; /**< 状态 LED 静态实例 */
-static uint32_t s_ticks_per_ms; /**< MCHTMR 每毫秒计数值 */
-
-/**
- * @brief 获取系统毫秒时间戳
- * @return 自启动以来的毫秒数
- */
-static uint32_t led_task_get_time_ms(void)
-{
-    return (uint32_t)(mchtmr_get_count(HPM_MCHTMR) / s_ticks_per_ms);
-}
 
 static void led_task_write_pin(bool on)
 {
@@ -77,17 +66,8 @@ void led_task_init(void)
     /* 初始化状态指示 LED */
     drv_led_init();
 
-    /* 计算 MCHTMR ticks/ms */
-    uint32_t mchtmr_freq = clock_get_frequency(clock_mchtmr0);
-    s_ticks_per_ms = mchtmr_freq / 1000;
-
-    if (s_ticks_per_ms == 0) {
-        /* 防止除零错误，设置一个合理的默认值 */
-        s_ticks_per_ms = 1;
-    }
-
-    /* 初始化 LED 子系统 */
-    led_init(led_task_get_time_ms);
+    /* 初始化 LED 子系统（使用全局 millis() 作为时间基准） */
+    led_init(millis);
 
     /* 配置 LED 实例 */
     led_config_t config = {

@@ -22,59 +22,59 @@
 /* Private constants ---------------------------------------------------------*/
 
 /** @brief 指令类型：读取控制表 */
-#define FINGER_CMD_READ             0x01U
+#define FINGER_CMD_READ 0x01U
 /** @brief 指令类型：写取控制表 */
-#define FINGER_CMD_WRITE            0x02U
+#define FINGER_CMD_WRITE 0x02U
 /** @brief 指令类型：指令控制模式 */
-#define FINGER_CMD_CONTROL          0x03U
+#define FINGER_CMD_CONTROL 0x03U
 
 /** @brief 控制表：电机ID */
-#define FINGER_CTL_ID               0x01U
+#define FINGER_CTL_ID 0x01U
 /** @brief 控制表：减速比（读） */
-#define FINGER_CTL_REDUCTION_RATIO  0x02U
+#define FINGER_CTL_REDUCTION_RATIO 0x02U
 /** @brief 控制表：极对数（读） */
-#define FINGER_CTL_POLE_PAIRS       0x03U
+#define FINGER_CTL_POLE_PAIRS 0x03U
 /** @brief 控制表：电机位置 */
-#define FINGER_CTL_POSITION         0x07U
+#define FINGER_CTL_POSITION 0x07U
 /** @brief 控制表：电机状态 */
-#define FINGER_CTL_STATUS           0x08U
+#define FINGER_CTL_STATUS 0x08U
 /** @brief 控制表：输出轴角度 */
-#define FINGER_CTL_OUTPUT_ANGLE     0x0AU
+#define FINGER_CTL_OUTPUT_ANGLE 0x0AU
 /** @brief 控制表：软件版本号 */
-#define FINGER_CTL_VERSION          0x0BU
+#define FINGER_CTL_VERSION 0x0BU
 
 /** @brief 控制表：写电机ID */
-#define FINGER_CTL_SET_ID           0x15U
+#define FINGER_CTL_SET_ID 0x15U
 /** @brief 控制表：写减速比 */
-#define FINGER_CTL_SET_REDUCTION    0x16U
+#define FINGER_CTL_SET_REDUCTION 0x16U
 /** @brief 控制表：写极对数 */
-#define FINGER_CTL_SET_POLE_PAIRS   0x17U
+#define FINGER_CTL_SET_POLE_PAIRS 0x17U
 
 /** @brief 控制表：启动电机 */
-#define FINGER_CTL_START            0x29U
+#define FINGER_CTL_START 0x29U
 /** @brief 控制表：急停 */
-#define FINGER_CTL_ESTOP            0x2AU
+#define FINGER_CTL_ESTOP 0x2AU
 /** @brief 控制表：暂停/启动 */
-#define FINGER_CTL_PAUSE            0x2BU
+#define FINGER_CTL_PAUSE 0x2BU
 /** @brief 控制表：参数装订 */
-#define FINGER_CTL_SAVE_FLASH       0x2CU
+#define FINGER_CTL_SAVE_FLASH 0x2CU
 /** @brief 控制表：清除故障 */
-#define FINGER_CTL_CLEAR_FAULT      0x2DU
+#define FINGER_CTL_CLEAR_FAULT 0x2DU
 /** @brief 控制表：速度模式 */
-#define FINGER_CTL_SPEED            0x2FU
+#define FINGER_CTL_SPEED 0x2FU
 /** @brief 控制表：位置模式（无反馈） */
-#define FINGER_CTL_POSITION_NOFB    0x31U
+#define FINGER_CTL_POSITION_NOFB 0x31U
 /** @brief 控制表：位置+速度闭环（无反馈） */
-#define FINGER_CTL_POS_SPEED_NOFB   0x4BU
+#define FINGER_CTL_POS_SPEED_NOFB 0x4BU
 
 /** @brief 指令帧头 */
 static const uint8_t s_finger_cmd_header[] = { 0x55, 0xAA };
-#define FINGER_HEADER_LEN           2U
+#define FINGER_HEADER_LEN 2U
 
 /* Private variables ---------------------------------------------------------*/
 
 static clist_head_t s_finger_head; /**< 手指电机实例链表头 */
-static bool s_finger_initialized;  /**< 子系统初始化标志 */
+static bool s_finger_initialized; /**< 子系统初始化标志 */
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -267,7 +267,7 @@ static void finger_build_data_segment(finger_handle_t* handle, uint8_t* data,
         data[offset++] = (uint8_t)((handle->pending_position >> 16) & 0xFFU);
         data[offset++] = (uint8_t)((handle->pending_position >> 8) & 0xFFU);
         data[offset++] = (uint8_t)(handle->pending_position & 0xFFU);
-        data[offset++] = 0x10;  /* 预留 */
+        data[offset++] = 0x10; /* 预留 */
         data[offset++] = 0x00;
         data[offset++] = (uint8_t)((handle->pending_torque >> 8) & 0xFFU);
         data[offset++] = (uint8_t)(handle->pending_torque & 0xFFU);
@@ -327,8 +327,7 @@ static finger_error_t finger_parse_response(const finger_handle_t* handle,
         /* 电机电角度 0-359°，占 2 字节 */
         if (len >= 8) {
             /* cast away const: only used internally to cache response data */
-            *(uint16_t*)&((finger_handle_t*)handle)->position =
-                (uint16_t)(((uint16_t)frame[6] << 8) | frame[7]);
+            *(uint16_t*)&((finger_handle_t*)handle)->position = (uint16_t)(((uint16_t)frame[6] << 8) | frame[7]);
         }
         break;
 
@@ -346,8 +345,7 @@ static finger_error_t finger_parse_response(const finger_handle_t* handle,
     case FINGER_CTL_OUTPUT_ANGLE:
         /* 输出轴角度，占 2 字节，单位 0.0555° */
         if (len >= 8) {
-            *(uint32_t*)&((finger_handle_t*)handle)->output_angle_raw =
-                (uint32_t)(((uint16_t)frame[6] << 8) | frame[7]);
+            *(uint32_t*)&((finger_handle_t*)handle)->output_angle_raw = (uint32_t)(((uint16_t)frame[6] << 8) | frame[7]);
         }
         break;
 

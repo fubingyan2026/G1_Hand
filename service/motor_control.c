@@ -92,7 +92,8 @@ void motor_control_deinit(void)
         return;
     }
 
-    clist_for_each_entry_safe(h, tmp, &s_motor_control_head, node) {
+    clist_for_each_entry_safe(h, tmp, &s_motor_control_head, node)
+    {
         clist_del(&h->node);
         h->initialized = false;
         h->finger = NULL;
@@ -186,7 +187,8 @@ motor_control_error_t motor_control_unregister(const char* name)
         return MOTOR_CONTROL_ERROR_UNINITIALIZED;
     }
 
-    clist_for_each_entry(h, &s_motor_control_head, node) {
+    clist_for_each_entry(h, &s_motor_control_head, node)
+    {
         if (strcmp(h->config.name, name) == 0) {
             clist_del(&h->node);
             h->initialized = false;
@@ -206,7 +208,8 @@ motor_control_handle_t* motor_control_get_by_id(uint8_t motor_id)
         return NULL;
     }
 
-    clist_for_each_entry(h, &s_motor_control_head, node) {
+    clist_for_each_entry(h, &s_motor_control_head, node)
+    {
         if (h->config.motor_id == motor_id) {
             return h;
         }
@@ -263,7 +266,7 @@ motor_control_error_t motor_control_process_rx_frame(
     /* 校验 datalen — 固定长度: 查询=0, 2B命令=18, 4B命令=36 */
     bool is_4byte_cmd = (cmd == MOTOR_CONTROL_CMD_SET_POSITION_SPEED);
     uint8_t expected_datalen = is_4byte_cmd ? MOTOR_CONTROL_DATA_MAX
-        : (is_query ? 0U : MOTOR_CONTROL_DATA_BYTES);
+                                            : (is_query ? 0U : MOTOR_CONTROL_DATA_BYTES);
 
     if (datalen != expected_datalen) {
         return MOTOR_CONTROL_ERROR_BAD_FRAME;
@@ -283,8 +286,14 @@ motor_control_error_t motor_control_process_rx_frame(
                 }
 
                 motor_control_handle_t* handle = motor_control_get_by_id(motor_id);
-                if (!handle) { result = MOTOR_CONTROL_ERROR_NOT_FOUND; continue; }
-                if (handle->command_in_flight) { result = MOTOR_CONTROL_ERROR_MOTOR_BUSY; continue; }
+                if (!handle) {
+                    result = MOTOR_CONTROL_ERROR_NOT_FOUND;
+                    continue;
+                }
+                if (handle->command_in_flight) {
+                    result = MOTOR_CONTROL_ERROR_MOTOR_BUSY;
+                    continue;
+                }
 
                 finger_error_t ferr = finger_set_position_speed(
                     handle->finger, (uint32_t)pos, (uint32_t)(int32_t)speed_val);
@@ -309,8 +318,14 @@ motor_control_error_t motor_control_process_rx_frame(
                 }
 
                 motor_control_handle_t* handle = motor_control_get_by_id(motor_id);
-                if (!handle) { result = MOTOR_CONTROL_ERROR_NOT_FOUND; continue; }
-                if (handle->command_in_flight) { result = MOTOR_CONTROL_ERROR_MOTOR_BUSY; continue; }
+                if (!handle) {
+                    result = MOTOR_CONTROL_ERROR_NOT_FOUND;
+                    continue;
+                }
+                if (handle->command_in_flight) {
+                    result = MOTOR_CONTROL_ERROR_MOTOR_BUSY;
+                    continue;
+                }
 
                 motor_control_error_t dispatch_err = motor_control_dispatch_control(
                     handle, cmd, val);
@@ -423,7 +438,8 @@ motor_control_error_t motor_control_emergency_stop_all(void)
         return MOTOR_CONTROL_ERROR_UNINITIALIZED;
     }
 
-    clist_for_each_entry(h, &s_motor_control_head, node) {
+    clist_for_each_entry(h, &s_motor_control_head, node)
+    {
         if (h->finger) {
             (void)finger_emergency_stop(h->finger);
         }
@@ -472,7 +488,7 @@ void motor_control_on_finger_response(finger_handle_t* finger_handle,
     resp.datalen = MOTOR_CONTROL_DATA_BYTES; /* 固定 18 字节 = 9 电机 × 2 字节 */
 
     uint16_t error_code = success ? (uint16_t)MOTOR_CONTROL_OK
-        : (uint16_t)MOTOR_CONTROL_ERROR_MOTOR_FAULT;
+                                  : (uint16_t)MOTOR_CONTROL_ERROR_MOTOR_FAULT;
     motor_control_set_data(&resp, handle->config.motor_id, error_code);
 
     /* 4. 存入应答帧 */

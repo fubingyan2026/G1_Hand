@@ -18,10 +18,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "motor_control_task.h"
 
+#include "bsp_systick.h"
 #include "drv_can.h"
-#include "hpm_clock_drv.h"
-#include "hpm_mchtmr_drv.h"
-#include "hpm_soc.h"
 #include "motor_control.h"
 #include "protocol_packer.h"
 #include "protocol_parser.h"
@@ -32,13 +30,13 @@
 /* Private constants ---------------------------------------------------------*/
 
 /** @brief 心跳间隔 (ms) */
-#define HEARTBEAT_INTERVAL_MS  100U
+#define HEARTBEAT_INTERVAL_MS 100U
 
 /** @brief 解析器输入 kfifo 大小 */
-#define PARSER_INPUT_BUF_SIZE  256U
+#define PARSER_INPUT_BUF_SIZE 256U
 
 /** @brief 解析器/打包器输出缓冲区大小 */
-#define PROTO_OUTPUT_BUF_SIZE  64U
+#define PROTO_OUTPUT_BUF_SIZE 64U
 
 /** @brief 协议帧头 */
 static const uint8_t s_proto_header[] = { MOTOR_CONTROL_HEADER_VAL };
@@ -49,18 +47,91 @@ static const uint8_t s_proto_footer[] = { MOTOR_CONTROL_ENDER_VAL };
 /* --- DLC ↔ 字节数 转换表 --- */
 
 static const uint8_t s_dlc_to_bytes[16] = {
-    0, 1, 2, 3, 4, 5, 6, 7,
-    8, 12, 16, 20, 24, 32, 48, 64,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    48,
+    64,
 };
 
 static const uint8_t s_bytes_to_dlc[65] = {
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 9,
-    10, 10, 10, 10,
-    11, 11, 11, 11,
-    12, 12, 12, 12,
-    13, 13, 13, 13, 13, 13, 13, 13,
-    14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
-    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    9,
+    9,
+    9,
+    10,
+    10,
+    10,
+    10,
+    11,
+    11,
+    11,
+    11,
+    12,
+    12,
+    12,
+    12,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    13,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    14,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
+    15,
 };
 
 /* Private variables ---------------------------------------------------------*/
@@ -78,9 +149,8 @@ static uint8_t s_packer_output_buf[PROTO_OUTPUT_BUF_SIZE];
 
 static volatile uint32_t s_rx_count;
 static uint32_t s_tx_count;
-static uint32_t s_rx_err_count;             /**< 协议帧处理错误计数 */
-static uint32_t s_ticks_per_ms;
-static uint32_t s_last_heartbeat_ticks;
+static uint32_t s_rx_err_count; /**< 协议帧处理错误计数 */
+static uint32_t s_last_heartbeat_ms;
 static bool s_safe_mode;
 static bool s_ep_warned;
 
@@ -193,14 +263,8 @@ void motor_control_task_init_transport(void)
         return;
     }
 
-    /* 4. 计算 MCHTMR ticks/ms */
-    uint32_t mchtmr_freq = clock_get_frequency(clock_mchtmr0);
-    s_ticks_per_ms = mchtmr_freq / 1000U;
-    if (s_ticks_per_ms == 0) {
-        s_ticks_per_ms = 1;
-    }
-
-    s_last_heartbeat_ticks = motor_control_task_get_ticks();
+    /* 4. 初始化心跳计时 */
+    s_last_heartbeat_ms = motor_control_task_get_ticks();
     s_rx_count = 0;
     s_tx_count = 0;
     s_rx_err_count = 0;
@@ -208,14 +272,14 @@ void motor_control_task_init_transport(void)
     s_ep_warned = false;
 
     printf("[MOTOR_CTRL_TASK] Transport initialized: CAN4 1M/5M "
-        "(parser + packer)\n");
+           "(parser + packer)\n");
 }
 
 void motor_control_task_init(void)
 {
     /* @deprecated 向后兼容空壳，实际初始化由 motor_link_task_init() 完成 */
     (void)printf("[MOTOR_CTRL_TASK] motor_control_task_init() is deprecated, "
-        "use motor_link_task_init() instead\n");
+                 "use motor_link_task_init() instead\n");
 }
 
 /*
@@ -237,7 +301,7 @@ void motor_control_task_poll(void)
     if (bus_state == DRV_CAN_STATE_BUS_OFF) {
         printf("[MOTOR_CTRL_TASK] BUS-OFF, recovering...\n");
         drv_can_recover(s_can_ctx);
-        s_last_heartbeat_ticks = now;
+        s_last_heartbeat_ms = now;
         s_ep_warned = false;
         return;
     }
@@ -304,7 +368,7 @@ void motor_control_task_poll(void)
 
 static uint32_t motor_control_task_get_ticks(void)
 {
-    return (uint32_t)mchtmr_get_count(HPM_MCHTMR);
+    return millis();
 }
 
 static void motor_control_task_rx_callback(drv_can_context_t* ctx,

@@ -95,20 +95,20 @@ static hpm_stat_t bsp_uart_start_tx_dma(bsp_uart_config_t* cfg,
 SDK_DECLARE_EXT_ISR_M(IRQn_HDMA, hdma_isr)
 void hdma_isr(void)
 {
-    DMAV2_Type *dma = HPM_HDMA;
+    DMAV2_Type* dma = HPM_HDMA;
 
     /* 快照并清除所有通道的挂起中断（W1C），确保退出前中断线拉低 */
-    uint32_t tc    = dma->INTTCSTS;
-    uint32_t err   = dma->INTERRSTS;
+    uint32_t tc = dma->INTTCSTS;
+    uint32_t err = dma->INTERRSTS;
     uint32_t abort = dma->INTABORTSTS;
-    dma->INTTCSTS    = tc;
-    dma->INTERRSTS   = err;
+    dma->INTTCSTS = tc;
+    dma->INTERRSTS = err;
     dma->INTABORTSTS = abort;
 
     /* 仅处理我们关心的 TX TC 事件 */
     for (uint32_t i = 0; i < s_instance_count; i++) {
-        bsp_uart_instance_t *inst = &s_instances[i];
-        bsp_uart_config_t *cfg   = inst->cfg;
+        bsp_uart_instance_t* inst = &s_instances[i];
+        bsp_uart_config_t* cfg = inst->cfg;
 
         if (tc & (1 << cfg->tx_dma_ch)) {
             inst->tx_done = true;
@@ -232,7 +232,7 @@ void bsp_uart_init(bsp_uart_config_t* cfg)
     dma_ch_cfg.dst_addr = core_local_mem_to_sys_address(BOARD_RUNNING_CORE,
         (uint32_t)cfg->rx_circ_buf);
     dma_ch_cfg.dst_addr_ctrl = DMA_ADDRESS_CONTROL_INCREMENT;
-    dma_ch_cfg.interrupt_mask = DMA_INTERRUPT_MASK_ALL;  /* RX 环形 DMA 自维持，无需中断 */
+    dma_ch_cfg.interrupt_mask = DMA_INTERRUPT_MASK_ALL; /* RX 环形 DMA 自维持，无需中断 */
     dma_ch_cfg.src_width = DMA_TRANSFER_WIDTH_BYTE;
     dma_ch_cfg.dst_width = DMA_TRANSFER_WIDTH_BYTE;
     dma_ch_cfg.size_in_byte = cfg->rx_circ_buf_size;

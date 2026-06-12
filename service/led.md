@@ -20,23 +20,23 @@
 
 ### `led_config_t` — LED 基础配置
 
-| 字段 | 类型 | 说明 |
-| :--- | :--- | :--- |
-| `name` | `const char*` | LED 唯一名称，用于 `led_get_instance()` 查找 |
-| `init_state` | `led_state_t` | 注册后的初始状态 |
-| `write_pin` | `void (*)(bool on)` | 引脚写入回调：`true`=逻辑亮，`false`=逻辑灭 |
-| `read_pin` | `bool (*)(void)` | 引脚读取回调：返回逻辑电平 |
+| 字段         | 类型                | 说明                                         |
+| :----------- | :------------------ | :------------------------------------------- |
+| `name`       | `const char*`       | LED 唯一名称，用于 `led_get_instance()` 查找 |
+| `init_state` | `led_state_t`       | 注册后的初始状态                             |
+| `write_pin`  | `void (*)(bool on)` | 引脚写入回调：`true`=逻辑亮，`false`=逻辑灭  |
+| `read_pin`   | `bool (*)(void)`    | 引脚读取回调：返回逻辑电平                   |
 
 写入回调用户自行实现，内部处理 GPIO 端口/引脚和有效电平映射。
 
 ### `led_cmd_t` — 异步命令
 
-| 字段 | 类型 | 说明 |
-| :--- | :--- | :--- |
-| `led_set_state` | `led_state_t` | 目标状态 |
-| `led_blink_cycle_ms` | `uint16_t` | 闪烁间隔 (ms) |
-| `led_blink_wait_ms` | `uint16_t` | 等待间隔 (ms) |
-| `led_blink_code_counts` | `uint16_t` | 闪烁次数（`0`=无限循环） |
+| 字段                    | 类型          | 说明                     |
+| :---------------------- | :------------ | :----------------------- |
+| `led_set_state`         | `led_state_t` | 目标状态                 |
+| `led_blink_cycle_ms`    | `uint16_t`    | 闪烁间隔 (ms)            |
+| `led_blink_wait_ms`     | `uint16_t`    | 等待间隔 (ms)            |
+| `led_blink_code_counts` | `uint16_t`    | 闪烁次数（`0`=无限循环） |
 
 ---
 
@@ -133,10 +133,10 @@ led_task_refresh();
 - **BLINKING** — 按 `led_blink_cycle_ms` 间隔翻转引脚电平，每个下降沿（亮→灭）计数一次
 - **INTERVAL** — 保持熄灭 `led_blink_wait_ms`，等待结束后继续下一轮闪烁
 
-| `led_blink_code_counts` | 行为 |
-| :---------------------- | :--- |
-| `0` | 无限循环，不会自动关闭 |
-| `> 0` | 闪烁指定次数后自动切换到 `LED_STATE_OFF` |
+| `led_blink_code_counts` | 行为                                     |
+| :---------------------- | :--------------------------------------- |
+| `0`                     | 无限循环，不会自动关闭                   |
+| `> 0`                   | 闪烁指定次数后自动切换到 `LED_STATE_OFF` |
 
 当闪烁参数需要热更新时，如果 LED 正处于亮状态，模块会延迟到熄灭后才应用新参数，避免引脚产生异常脉冲。
 
@@ -144,20 +144,20 @@ led_task_refresh();
 
 ## API 参考
 
-| 函数 | 说明 |
-| :--- | :--- |
-| `led_init(cb)` | 初始化 LED 子系统，注入时间回调 |
-| `led_deinit()` | 反初始化，释放所有资源 |
-| `led_register(cfg)` | 动态注册 LED 实例 |
-| `led_register_static(cfg, h)` | 静态注册 LED，使用预分配内存 |
-| `led_unregister(name)` | 注销并释放指定名称的 LED |
-| `led_get_instance(name)` | 根据名称获取 LED 句柄 |
-| `led_get_head()` | 获取 LED 链表头 |
-| `led_set_state(h, state)` | 异步设置 LED 运行状态 |
-| `led_set_blink_interval(h, cmd)` | 异步配置闪烁参数 |
-| `led_get_blink_phase(h)` | 获取当前闪烁阶段 |
-| `led_set_callbacks(...)` | 注册状态/闪烁阶段/边沿回调 |
-| `led_task_refresh()` | **核心任务**，需在主循环中定时调用 |
+| 函数                             | 说明                               |
+| :------------------------------- | :--------------------------------- |
+| `led_init(cb)`                   | 初始化 LED 子系统，注入时间回调    |
+| `led_deinit()`                   | 反初始化，释放所有资源             |
+| `led_register(cfg)`              | 动态注册 LED 实例                  |
+| `led_register_static(cfg, h)`    | 静态注册 LED，使用预分配内存       |
+| `led_unregister(name)`           | 注销并释放指定名称的 LED           |
+| `led_get_instance(name)`         | 根据名称获取 LED 句柄              |
+| `led_get_head()`                 | 获取 LED 链表头                    |
+| `led_set_state(h, state)`        | 异步设置 LED 运行状态              |
+| `led_set_blink_interval(h, cmd)` | 异步配置闪烁参数                   |
+| `led_get_blink_phase(h)`         | 获取当前闪烁阶段                   |
+| `led_set_callbacks(...)`         | 注册状态/闪烁阶段/边沿回调         |
+| `led_task_refresh()`             | **核心任务**，需在主循环中定时调用 |
 
 ---
 

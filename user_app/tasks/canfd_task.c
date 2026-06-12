@@ -19,9 +19,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "bsp_systick.h"
 #include "drv_can.h"
-#include "hpm_mchtmr_drv.h"
-#include "hpm_soc.h"
 
 /* Private constants ---------------------------------------------------------*/
 
@@ -42,11 +41,8 @@ static uint8_t s_tx_counter;
 /** @brief RX 接收计数 (用于打印统计) */
 static uint32_t s_rx_count;
 
-/** @brief 上次 TX 的 MCHTMR 计数值 */
-static uint32_t s_last_tx_ticks;
-
-/** @brief MCHTMR 每毫秒计数值 */
-static uint32_t s_ticks_per_ms;
+/** @brief 上次 TX 的毫秒时间戳 */
+static uint32_t s_last_tx_ms;
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -71,7 +67,6 @@ static void canfd_task_rx_callback(drv_can_context_t* ctx,
 void canfd_task_init(void)
 {
     drv_can_context_t* ctx;
-    uint32_t mchtmr_freq;
 
     /* CAN4 硬件配置 */
     const drv_can_config_t can4_config = {
@@ -111,12 +106,8 @@ void canfd_task_init(void)
     /* 注册 ISR 接收回调 (仅做计数统计, 不打印) */
     drv_can_set_rx_callback(ctx, canfd_task_rx_callback);
 
-    /* 计算 MCHTMR 每毫秒计数值 */
-    mchtmr_freq = clock_get_frequency(clock_mchtmr0);
-    s_ticks_per_ms = mchtmr_freq / 1000U;
-
     /* 记录初始时间 */
-    s_last_tx_ticks = canfd_task_get_ticks();
+    s_last_tx_ms = canfd_task_get_ticks();
     s_tx_counter = 0;
     s_rx_count = 0;
     s_can_ctx = ctx;
@@ -160,7 +151,7 @@ void canfd_task_poll(void)
         if (state == DRV_CAN_STATE_BUS_OFF) {
             printf("[CANFD] BUS-OFF detected, recovering...\n");
             drv_can_recover(s_can_ctx);
-            s_last_tx_ticks = canfd_task_get_ticks();
+            s_last_tx_ms = canfd_task_get_ticks();
             return;
         }
         if (state == DRV_CAN_STATE_ERROR_PASSIVE) {
@@ -174,8 +165,8 @@ void canfd_task_poll(void)
 
     /* 3. 周期性发送 CAN-FD 测试帧 */
     now = canfd_task_get_ticks();
-    if (now - s_last_tx_ticks >= CANFD_TX_INTERVAL_MS) {
-        s_last_tx_ticks = now;
+    if (now - s_last_tx_ms >= CANFD_TX_INTERVAL_MS) {
+        s_last_tx_ms = now;
 
         mcan_tx_frame_t tx_frame;
         uint8_t i;
@@ -213,7 +204,7 @@ void canfd_task_poll(void)
 
 static uint32_t canfd_task_get_ticks(void)
 {
-    return (uint32_t)(mchtmr_get_count(HPM_MCHTMR) / s_ticks_per_ms);
+    return millis();
 }
 
 static void canfd_task_rx_callback(drv_can_context_t* ctx,

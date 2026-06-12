@@ -19,10 +19,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "motor_link_task.h"
 
+#include "bsp_systick.h"
 #include "finger.h"
 #include "finger_task.h"
-#include "hpm_clock_drv.h"
-#include "hpm_mchtmr_drv.h"
 #include "motor_control.h"
 #include "motor_control_task.h"
 
@@ -32,13 +31,13 @@
 /* Private constants ---------------------------------------------------------*/
 
 /** @brief 手指电机名称最大长度 */
-#define FINGER_NAME_MAX_LEN     12U
+#define FINGER_NAME_MAX_LEN 12U
 
 /** @brief motor_control 实例名称最大长度 */
 #define MOTOR_CTRL_NAME_MAX_LEN 12U
 
 /** @brief 心跳间隔 (ms) */
-#define MOTOR_LINK_HEARTBEAT_INTERVAL_MS  100U
+#define MOTOR_LINK_HEARTBEAT_INTERVAL_MS 100U
 
 /* Private variables ---------------------------------------------------------*/
 
@@ -87,31 +86,18 @@ static motor_control_handle_t s_motor_ctrl_instances[MOTOR_LINK_MAX_MOTORS];
 /** @brief motor_control 实例名称字符串 */
 static char s_motor_ctrl_names[MOTOR_LINK_MAX_MOTORS][MOTOR_CTRL_NAME_MAX_LEN];
 
-/** @brief 上次心跳发送时刻（tick） */
-static uint32_t s_last_heartbeat_ticks;
-
-/** @brief MCHTMR 每毫秒计数值 */
-static uint32_t s_ticks_per_ms;
+/** @brief 上次心跳发送时刻（毫秒） */
+static uint32_t s_last_heartbeat_ms;
 
 /** @brief 任务初始化标志 */
 static bool s_motor_link_initialized;
 
 /* Private function prototypes -----------------------------------------------*/
 
-static uint32_t motor_link_get_ticks(void);
 static uint16_t motor_link_get_fault_bitmap(void);
-static bool motor_link_is_heartbeat_due(uint32_t now_ticks);
+static bool motor_link_is_heartbeat_due(uint32_t now_ms);
 
 /* Private functions ---------------------------------------------------------*/
-
-/**
- * @brief 获取系统 tick 值（MCHTMR 计数器）
- * @return tick 计数值
- */
-static uint32_t motor_link_get_ticks(void)
-{
-    return (uint32_t)mchtmr_get_count(HPM_MCHTMR);
-}
 
 /**
  * @brief 遍历所有 motor_control 实例，计算故障位图
@@ -131,13 +117,12 @@ static uint16_t motor_link_get_fault_bitmap(void)
 
 /**
  * @brief 检查是否到达心跳发送间隔
- * @param now_ticks 当前 tick 值
+ * @param now_ms 当前毫秒时间戳
  * @return true 应发送心跳，false 未到间隔
  */
-static bool motor_link_is_heartbeat_due(uint32_t now_ticks)
+static bool motor_link_is_heartbeat_due(uint32_t now_ms)
 {
-    uint32_t elapsed = now_ticks - s_last_heartbeat_ticks;
-    return (elapsed >= MOTOR_LINK_HEARTBEAT_INTERVAL_MS * s_ticks_per_ms);
+    return ((now_ms - s_last_heartbeat_ms) >= MOTOR_LINK_HEARTBEAT_INTERVAL_MS);
 }
 
 /* Exported functions --------------------------------------------------------*/
@@ -232,17 +217,13 @@ void motor_link_task_init(void)
     }
 
     /* 心跳计时器初始化 */
-    s_last_heartbeat_ticks = (uint32_t)mchtmr_get_count(HPM_MCHTMR);
-    uint32_t mchtmr_freq = clock_get_frequency(clock_mchtmr0);
-    s_ticks_per_ms = mchtmr_freq / 1000U;
-    if (s_ticks_per_ms == 0) {
-        s_ticks_per_ms = 1;
-    }
+    s_last_heartbeat_ms = millis();
 
     s_motor_link_initialized = true;
 
     printf("[MOTOR_LINK] Initialization complete: %u motors linked, "
-        "%lu ticks/ms\n", MOTOR_LINK_MAX_MOTORS, (unsigned long)s_ticks_per_ms);
+           "%lu ms/ticks\n",
+        MOTOR_LINK_MAX_MOTORS, (unsigned long)24000);
     printf("[MOTOR_LINK] ========================================\n\n");
 }
 
@@ -264,9 +245,9 @@ void motor_link_task_poll(void)
     }
 
     /* 4. 周期性心跳（每 100ms） */
-    uint32_t now_ticks = motor_link_get_ticks();
-    if (motor_link_is_heartbeat_due(now_ticks)) {
-        s_last_heartbeat_ticks = now_ticks;
+    uint32_t now_ms = millis();
+    if (motor_link_is_heartbeat_due(now_ms)) {
+        s_last_heartbeat_ms = now_ms;
         motor_control_task_send_heartbeat(motor_link_get_fault_bitmap());
     }
 }

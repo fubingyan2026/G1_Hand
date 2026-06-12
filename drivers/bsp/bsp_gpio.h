@@ -28,7 +28,7 @@ extern "C" {
  * @param port_idx 端口索引（使用 GPIO_GET_PORT_INDEX(pin_num)）
  * @param pin_idx  引脚索引（使用 GPIO_GET_PIN_INDEX(pin_num)）
  */
-void bsp_gpio_set_input(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
+void bsp_gpio_set_input(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx);
 
 /**
  * @brief 配置 GPIO 引脚为输出模式（不设置初始电平）
@@ -37,7 +37,7 @@ void bsp_gpio_set_input(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
  * @param port_idx 端口索引
  * @param pin_idx  引脚索引
  */
-void bsp_gpio_set_output(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
+void bsp_gpio_set_output(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx);
 
 /**
  * @brief 配置 GPIO 引脚为输出模式，并设置初始电平
@@ -47,7 +47,7 @@ void bsp_gpio_set_output(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
  * @param pin_idx      引脚索引
  * @param initial_level 初始输出电平（0 = 低电平，1 = 高电平）
  */
-void bsp_gpio_init(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx, uint8_t initial_level);
+void bsp_gpio_init(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx, uint8_t initial_level);
 
 /**
  * @brief 写 GPIO 引脚输出电平
@@ -57,7 +57,7 @@ void bsp_gpio_init(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx, uint8_t 
  * @param pin_idx  引脚索引
  * @param level    输出电平（0 = 低电平，1 = 高电平）
  */
-void bsp_gpio_write(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx, uint8_t level);
+void bsp_gpio_write(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx, uint8_t level);
 
 /**
  * @brief 读 GPIO 引脚输入电平
@@ -67,7 +67,7 @@ void bsp_gpio_write(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx, uint8_t
  * @param pin_idx  引脚索引
  * @return        引脚电平（0 = 低电平，1 = 高电平）
  */
-uint8_t bsp_gpio_read(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
+uint8_t bsp_gpio_read(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx);
 
 /**
  * @brief 翻转 GPIO 引脚输出电平
@@ -76,7 +76,7 @@ uint8_t bsp_gpio_read(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
  * @param port_idx 端口索引
  * @param pin_idx  引脚索引
  */
-void bsp_gpio_toggle(GPIO_Type *port, uint32_t port_idx, uint8_t pin_idx);
+void bsp_gpio_toggle(GPIO_Type* port, uint32_t port_idx, uint8_t pin_idx);
 
 #ifdef __cplusplus
 }

@@ -21,9 +21,9 @@
 #ifndef DRV_RS485_H
 #define DRV_RS485_H
 
-#include <stdint.h>
-#include <stdbool.h>
 #include "hpm_common.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -34,9 +34,9 @@ extern "C" {
  * -------------------------------------------------------------------------- */
 
 typedef enum {
-    RS485_PORT_MOTOR1 = 0,      /**< 电机通讯通道 1 (UART15) */
-    RS485_PORT_MOTOR2,          /**< 电机通讯通道 2 (UART14) */
-    RS485_PORT_EXT,             /**< 外部 RS-485 通讯 (UART8) */
+    RS485_PORT_MOTOR1 = 0, /**< 电机通讯通道 1 (UART15) */
+    RS485_PORT_MOTOR2, /**< 电机通讯通道 2 (UART14) */
+    RS485_PORT_EXT, /**< 外部 RS-485 通讯 (UART8) */
     RS485_PORT_MAX
 } rs485_port_t;
 
@@ -44,10 +44,10 @@ typedef enum {
  * 默认配置
  * -------------------------------------------------------------------------- */
 
-#define RS485_DEFAULT_BAUDRATE          (2000000U)
-#define RS485_RX_IDLE_THRESHOLD         10U     /**< 接收空闲阈值（位时间） */
-#define RS485_RX_CIRC_BUF_SIZE          128U    /**< 每端口 DMA 环形缓冲区大小 */
-#define RS485_RX_RING_BUF_SIZE          256U    /**< 每端口接收环形缓冲区大小 */
+#define RS485_DEFAULT_BAUDRATE (2000000U)
+#define RS485_RX_IDLE_THRESHOLD 10U /**< 接收空闲阈值（位时间） */
+#define RS485_RX_CIRC_BUF_SIZE 128U /**< 每端口 DMA 环形缓冲区大小 */
+#define RS485_RX_RING_BUF_SIZE 256U /**< 每端口接收环形缓冲区大小 */
 
 /* --------------------------------------------------------------------------
  * 回调类型
@@ -61,7 +61,7 @@ typedef enum {
  * @param data  指向环形缓冲区中接收数据的指针
  * @param len   帧的字节数
  */
-typedef void (*rs485_rx_callback_t)(rs485_port_t port, uint8_t *data, uint32_t len);
+typedef void (*rs485_rx_callback_t)(rs485_port_t port, uint8_t* data, uint32_t len);
 
 /* --------------------------------------------------------------------------
  * 初始化
@@ -81,7 +81,7 @@ void rs485_set_rx_callback(rs485_port_t port, rs485_rx_callback_t cb);
 uint32_t rs485_rx_available(rs485_port_t port);
 
 /** @brief 从接收队列读取数据（应用层调用） */
-uint32_t rs485_rx_read(rs485_port_t port, uint8_t *out, uint32_t max_len);
+uint32_t rs485_rx_read(rs485_port_t port, uint8_t* out, uint32_t max_len);
 
 /**
  * @brief RS-485 非阻塞发送（零拷贝 DMA）
@@ -97,7 +97,7 @@ uint32_t rs485_rx_read(rs485_port_t port, uint8_t *out, uint32_t max_len);
  * @param len  字节数
  * @return     status_success 若传输已启动，status_fail 若端口忙
  */
-hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len);
+hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len);
 
 /**
  * @brief RS-485 阻塞发送
@@ -109,7 +109,7 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len);
  * @param len  字节数
  * @return     成功返回 status_success
  */
-hpm_stat_t rs485_send(rs485_port_t port, const uint8_t *data, uint32_t len);
+hpm_stat_t rs485_send(rs485_port_t port, const uint8_t* data, uint32_t len);
 
 /**
  * @brief 检查发送管线是否空闲（无 DMA 运行）

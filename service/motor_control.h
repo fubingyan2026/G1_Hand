@@ -56,28 +56,28 @@ extern "C" {
  *       而非结构体固定偏移。解析器已校验帧头/帧尾/CRC，此结构体仅映射线格式前 4+datalen 字节。
  */
 typedef struct __attribute__((packed)) {
-    uint8_t header;                     /**< 帧头，固定 's' (0x73) */
-    uint8_t cmd;                        /**< 命令码 */
-    uint8_t flags;                      /**< 标志位 */
-    uint8_t datalen;                    /**< data 段实际字节数 (0-36) */
-    uint8_t data[36];                   /**< 电机数据 (最大 36 字节), 小端序 */
+    uint8_t header; /**< 帧头，固定 's' (0x73) */
+    uint8_t cmd; /**< 命令码 */
+    uint8_t flags; /**< 标志位 */
+    uint8_t datalen; /**< data 段实际字节数 (0-36) */
+    uint8_t data[36]; /**< 电机数据 (最大 36 字节), 小端序 */
 } canfd_protocol_t;
 
 /**
  * @brief 电机控制桥接错误码枚举
  */
 typedef enum {
-    MOTOR_CONTROL_OK = 0,               /**< 操作成功 */
-    MOTOR_CONTROL_ERROR_NULL_PTR,       /**< 空指针错误 */
-    MOTOR_CONTROL_ERROR_INVALID_PARAM,  /**< 无效参数 */
-    MOTOR_CONTROL_ERROR_UNINITIALIZED,  /**< 未初始化 */
-    MOTOR_CONTROL_ERROR_NOT_FOUND,      /**< 电机未找到 */
-    MOTOR_CONTROL_ERROR_ALREADY_EXIST,  /**< 同名实例已存在 */
-    MOTOR_CONTROL_ERROR_MOTOR_BUSY,     /**< 电机忙（有待处理命令） */
-    MOTOR_CONTROL_ERROR_MOTOR_FAULT,    /**< 电机故障 */
-    MOTOR_CONTROL_ERROR_TIMEOUT,        /**< RS-485 应答超时 */
-    MOTOR_CONTROL_ERROR_RS485_FAIL,     /**< RS-485 通讯失败 */
-    MOTOR_CONTROL_ERROR_BAD_FRAME,      /**< 帧头/帧尾校验失败 */
+    MOTOR_CONTROL_OK = 0, /**< 操作成功 */
+    MOTOR_CONTROL_ERROR_NULL_PTR, /**< 空指针错误 */
+    MOTOR_CONTROL_ERROR_INVALID_PARAM, /**< 无效参数 */
+    MOTOR_CONTROL_ERROR_UNINITIALIZED, /**< 未初始化 */
+    MOTOR_CONTROL_ERROR_NOT_FOUND, /**< 电机未找到 */
+    MOTOR_CONTROL_ERROR_ALREADY_EXIST, /**< 同名实例已存在 */
+    MOTOR_CONTROL_ERROR_MOTOR_BUSY, /**< 电机忙（有待处理命令） */
+    MOTOR_CONTROL_ERROR_MOTOR_FAULT, /**< 电机故障 */
+    MOTOR_CONTROL_ERROR_TIMEOUT, /**< RS-485 应答超时 */
+    MOTOR_CONTROL_ERROR_RS485_FAIL, /**< RS-485 通讯失败 */
+    MOTOR_CONTROL_ERROR_BAD_FRAME, /**< 帧头/帧尾校验失败 */
 } motor_control_error_t;
 
 /**
@@ -85,32 +85,32 @@ typedef enum {
  */
 typedef enum {
     /* --- 控制命令 (0x01-0x0F) --- */
-    MOTOR_CONTROL_CMD_SET_SPEED = 0x01,     /**< 设置速度 (int16 LE, RPM) */
-    MOTOR_CONTROL_CMD_SET_POSITION = 0x02,  /**< 设置位置 (uint16 LE, 度×10) */
-    MOTOR_CONTROL_CMD_SET_CURRENT = 0x03,   /**< 设置电流 (uint16 LE, mA) */
-    MOTOR_CONTROL_CMD_START = 0x04,         /**< 启动电机 (data != 0 → 执行) */
-    MOTOR_CONTROL_CMD_STOP = 0x05,          /**< 急停电机 (data != 0 → 执行) */
-    MOTOR_CONTROL_CMD_CLEAR_FAULT = 0x06,   /**< 清除故障 (data != 0 → 执行) */
+    MOTOR_CONTROL_CMD_SET_SPEED = 0x01, /**< 设置速度 (int16 LE, RPM) */
+    MOTOR_CONTROL_CMD_SET_POSITION = 0x02, /**< 设置位置 (uint16 LE, 度×10) */
+    MOTOR_CONTROL_CMD_SET_CURRENT = 0x03, /**< 设置电流 (uint16 LE, mA) */
+    MOTOR_CONTROL_CMD_START = 0x04, /**< 启动电机 (data != 0 → 执行) */
+    MOTOR_CONTROL_CMD_STOP = 0x05, /**< 急停电机 (data != 0 → 执行) */
+    MOTOR_CONTROL_CMD_CLEAR_FAULT = 0x06, /**< 清除故障 (data != 0 → 执行) */
     MOTOR_CONTROL_CMD_SET_POSITION_SPEED = 0x07, /**< 位置+速度闭环 (4B/电机: pos:u16+speed:i16 LE) */
 
     /* --- 查询命令 (0x10-0x1F) --- */
-    MOTOR_CONTROL_CMD_QUERY_STATUS = 0x10,  /**< 查询状态 */
+    MOTOR_CONTROL_CMD_QUERY_STATUS = 0x10, /**< 查询状态 */
     MOTOR_CONTROL_CMD_QUERY_POSITION = 0x11, /**< 查询位置 */
-    MOTOR_CONTROL_CMD_QUERY_SPEED = 0x12,   /**< 查询速度 */
+    MOTOR_CONTROL_CMD_QUERY_SPEED = 0x12, /**< 查询速度 */
     MOTOR_CONTROL_CMD_QUERY_CURRENT = 0x13, /**< 查询电流 */
 
     /* --- 心跳 (0xF0) --- */
-    MOTOR_CONTROL_CMD_HEARTBEAT = 0xF0,     /**< 心跳帧（MCU → Host） */
+    MOTOR_CONTROL_CMD_HEARTBEAT = 0xF0, /**< 心跳帧（MCU → Host） */
 } motor_control_cmd_t;
 
 /**
  * @brief 电机控制桥接实例配置结构体
  */
 typedef struct {
-    const char* name;                   /**< 实例名称 */
-    uint8_t motor_id;                   /**< CAN-FD 协议中的电机 ID（1-9） */
-    uint8_t finger_motor_id;            /**< 对应 finger 模块的 RS-485 地址 */
-    rs485_port_t finger_port;           /**< 对应 finger 模块的 RS-485 端口 */
+    const char* name; /**< 实例名称 */
+    uint8_t motor_id; /**< CAN-FD 协议中的电机 ID（1-9） */
+    uint8_t finger_motor_id; /**< 对应 finger 模块的 RS-485 地址 */
+    rs485_port_t finger_port; /**< 对应 finger 模块的 RS-485 端口 */
 } motor_control_config_t;
 
 /* 前向声明 */
@@ -120,67 +120,67 @@ typedef struct motor_control_handle motor_control_handle_t;
  * @brief 电机控制桥接实例句柄（运行时上下文）
  */
 struct motor_control_handle {
-    motor_control_config_t config;      /**< 配置副本 */
+    motor_control_config_t config; /**< 配置副本 */
 
-    finger_handle_t* finger;            /**< 绑定的 finger 电机实例 */
+    finger_handle_t* finger; /**< 绑定的 finger 电机实例 */
 
     /* 状态缓存（由 finger 应答回调更新） */
-    uint8_t status;                     /**< 最近查询的电机状态字节 */
-    uint16_t position;                  /**< 最近查询的电角度（度×10） */
-    finger_mode_t mode;                 /**< 当前工作模式 */
-    int16_t speed;                      /**< 最近设置/查询的速度 (RPM) */
-    uint16_t current;                   /**< 最近设置/查询的电流/力矩值 */
-    uint8_t fault_flags;                /**< 故障标志位 */
+    uint8_t status; /**< 最近查询的电机状态字节 */
+    uint16_t position; /**< 最近查询的电角度（度×10） */
+    finger_mode_t mode; /**< 当前工作模式 */
+    int16_t speed; /**< 最近设置/查询的速度 (RPM) */
+    uint16_t current; /**< 最近设置/查询的电流/力矩值 */
+    uint8_t fault_flags; /**< 故障标志位 */
 
     /* CAN-FD 应答帧缓冲 */
-    bool has_pending_response;          /**< 有待发送的 CAN-FD 应答帧 */
-    canfd_protocol_t response_frame;    /**< 应答帧数据 */
+    bool has_pending_response; /**< 有待发送的 CAN-FD 应答帧 */
+    canfd_protocol_t response_frame; /**< 应答帧数据 */
 
     /* RS-485 命令追踪 */
-    uint8_t pending_cmd;               /**< 发起操作的原 CAN 命令码 */
-    bool command_in_flight;             /**< RS-485 命令已发出，等待应答 */
-    bool ack_requested;                 /**< 主机请求了应答 */
+    uint8_t pending_cmd; /**< 发起操作的原 CAN 命令码 */
+    bool command_in_flight; /**< RS-485 命令已发出，等待应答 */
+    bool ack_requested; /**< 主机请求了应答 */
 
-    clist_head_t node;                  /**< 链表节点 */
-    bool initialized;                   /**< 初始化完成标志 */
+    clist_head_t node; /**< 链表节点 */
+    bool initialized; /**< 初始化完成标志 */
 };
 
 /* Exported constants --------------------------------------------------------*/
 
 /** @brief 协议帧开销字节数 (header + cmd + flags + datalen + crc_check + ender) */
-#define MOTOR_CONTROL_FRAME_OVERHEAD    6U
+#define MOTOR_CONTROL_FRAME_OVERHEAD 6U
 
 /** @brief data 段最大字节数 (SET_POSITION_SPEED: 9 电机 × 4 字节) */
-#define MOTOR_CONTROL_DATA_MAX          36U
+#define MOTOR_CONTROL_DATA_MAX 36U
 
 /** @brief 帧头值 */
-#define MOTOR_CONTROL_HEADER_VAL        's'     /* 0x73 */
+#define MOTOR_CONTROL_HEADER_VAL 's' /* 0x73 */
 
 /** @brief 帧尾值 */
-#define MOTOR_CONTROL_ENDER_VAL         'e'     /* 0x65 */
+#define MOTOR_CONTROL_ENDER_VAL 'e' /* 0x65 */
 
 /** @brief 电机总数 */
-#define MOTOR_CONTROL_MOTOR_NUMS        9U
+#define MOTOR_CONTROL_MOTOR_NUMS 9U
 
 /** @brief data 段字节数 */
-#define MOTOR_CONTROL_DATA_BYTES        18U
+#define MOTOR_CONTROL_DATA_BYTES 18U
 
 /** @brief CAN-FD 下行命令帧 CAN ID（Host → MCU） */
-#define MOTOR_CONTROL_CAN_ID_CMD        0x100U
+#define MOTOR_CONTROL_CAN_ID_CMD 0x100U
 
 /** @brief CAN-FD 上行应答帧 CAN ID（MCU → Host） */
-#define MOTOR_CONTROL_CAN_ID_RESP       0x101U
+#define MOTOR_CONTROL_CAN_ID_RESP 0x101U
 
 /** @brief flags: bit0 = 主机需要应答 */
-#define MOTOR_CONTROL_FLAG_ACK_REQUEST  0x01U
+#define MOTOR_CONTROL_FLAG_ACK_REQUEST 0x01U
 
 /* Exported macro ------------------------------------------------------------*/
 
 /** @brief 判断电机控制错误码是否成功 */
-#define MOTOR_CONTROL_IS_OK(err)    ((err) >= 0)
+#define MOTOR_CONTROL_IS_OK(err) ((err) >= 0)
 
 /** @brief 判断电机控制错误码是否失败 */
-#define MOTOR_CONTROL_IS_ERR(err)   ((err) < 0)
+#define MOTOR_CONTROL_IS_ERR(err) ((err) < 0)
 
 /**
  * @brief 获取电机 ID 在 data 段中的 16-bit 值（小端序）
@@ -188,9 +188,9 @@ struct motor_control_handle {
  * @param motor_id 电机 ID (1-9)
  * @return uint16_t 值
  */
-#define MOTOR_CONTROL_DATA_U16(proto, motor_id) \
+#define MOTOR_CONTROL_DATA_U16(proto, motor_id)      \
     ((uint16_t)((proto)->data[((motor_id) - 1) * 2]) \
-    | ((uint16_t)((proto)->data[((motor_id) - 1) * 2 + 1]) << 8))
+        | ((uint16_t)((proto)->data[((motor_id) - 1) * 2 + 1]) << 8))
 
 /**
  * @brief 设置电机 ID 在 data 段中的 16-bit 值（小端序）
@@ -198,25 +198,25 @@ struct motor_control_handle {
  * @param motor_id 电机 ID (1-9)
  * @param val uint16_t 值
  */
-#define MOTOR_CONTROL_SET_DATA_U16(proto, motor_id, val) \
-    do { \
-        (proto)->data[((motor_id) - 1) * 2] = (uint8_t)((val) & 0xFFU); \
+#define MOTOR_CONTROL_SET_DATA_U16(proto, motor_id, val)                           \
+    do {                                                                           \
+        (proto)->data[((motor_id) - 1) * 2] = (uint8_t)((val) & 0xFFU);            \
         (proto)->data[((motor_id) - 1) * 2 + 1] = (uint8_t)(((val) >> 8) & 0xFFU); \
     } while (0)
 
 /**
  * @brief 获取电机 ID 在 4 字节 data 段中的位置值 (uint16 LE, 前 2 字节)
  */
-#define MOTOR_CONTROL_DATA_POS(proto, motor_id) \
+#define MOTOR_CONTROL_DATA_POS(proto, motor_id)      \
     ((uint16_t)((proto)->data[((motor_id) - 1) * 4]) \
-    | ((uint16_t)((proto)->data[((motor_id) - 1) * 4 + 1]) << 8))
+        | ((uint16_t)((proto)->data[((motor_id) - 1) * 4 + 1]) << 8))
 
 /**
  * @brief 获取电机 ID 在 4 字节 data 段中的速度值 (int16 LE, 后 2 字节)
  */
-#define MOTOR_CONTROL_DATA_SPD(proto, motor_id) \
+#define MOTOR_CONTROL_DATA_SPD(proto, motor_id)                    \
     ((int16_t)((uint16_t)((proto)->data[((motor_id) - 1) * 4 + 2]) \
-    | ((uint16_t)((proto)->data[((motor_id) - 1) * 4 + 3]) << 8)))
+        | ((uint16_t)((proto)->data[((motor_id) - 1) * 4 + 3]) << 8)))
 
 /* Exported functions prototypes ---------------------------------------------*/
 

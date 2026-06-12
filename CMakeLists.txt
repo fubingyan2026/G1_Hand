@@ -62,6 +62,7 @@ sdk_app_src(drivers/device_driver/drv_can.c)
 # --- BSP 层 (drivers/bsp) ---
 sdk_app_src(drivers/bsp/bsp_uart.c)
 sdk_app_src(drivers/bsp/bsp_gpio.c)
+sdk_app_src(drivers/bsp/bsp_systick.c)
 
 # ============================================================================
 # 头文件搜索路径

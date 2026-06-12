@@ -344,9 +344,9 @@ led_error_t led_register_static(const led_config_t* config,
     fsm_fill(&fsm_cfg, fsm_always_true);
     fsm_init(&instance->fsm, config->init_state, &fsm_cfg);
 
-    static uint8_t led_cmd_buffer[LED_CMD_FIFO_SIZE * sizeof(led_cmd_t)] = {0};
+    static uint8_t led_cmd_buffer[LED_CMD_FIFO_SIZE * sizeof(led_cmd_t)] = { 0 };
     /* 分配命令队列 */
-    kfifo_init(&s_cmd_fifo,led_cmd_buffer,sizeof(led_cmd_buffer), NULL);
+    kfifo_init(&s_cmd_fifo, led_cmd_buffer, sizeof(led_cmd_buffer), NULL);
     instance->cmd_fifo = &s_cmd_fifo;
     if (!instance->cmd_fifo)
         return LED_ERROR_NO_MEMORY;

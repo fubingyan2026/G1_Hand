@@ -13,6 +13,7 @@
  */
 
 #include "board.h"
+#include "bsp_systick.h"
 #include "drv_led.h"
 #include "led_task.h"
 #include "motor_link_task.h"
@@ -23,6 +24,9 @@ int main(void)
 {
     /* 板级初始化（时钟、调试串口、引脚等） */
     board_init();
+
+    /* 初始化系统节拍（MCHTMR → 延时/时间戳） */
+    delay_init();
 
     /* 初始化 LED 闪烁任务（250ms 循环闪烁） */
     led_task_init();

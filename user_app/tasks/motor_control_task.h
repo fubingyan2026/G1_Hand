@@ -31,7 +31,7 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 
 /** @brief 支持的最大电机数量 */
-#define MOTOR_CONTROL_TASK_MAX_MOTORS  9U
+#define MOTOR_CONTROL_TASK_MAX_MOTORS 9U
 
 /* Exported functions prototypes ---------------------------------------------*/
 

@@ -23,8 +23,8 @@ extern "C" {
 #include <stdint.h>
 
 #include "clist.h"
-#include "protocol_packer.h"
 #include "drv_rs485.h"
+#include "protocol_packer.h"
 
 /* Exported types ------------------------------------------------------------*/
 
@@ -32,53 +32,53 @@ extern "C" {
  * @brief 手指电机错误码枚举
  */
 typedef enum {
-    FINGER_OK = 0,                       /**< 操作成功 */
-    FINGER_OK_EXISTED,                   /**< 已初始化 */
-    FINGER_ERROR_NULL_PTR,               /**< 空指针错误 */
-    FINGER_ERROR_INVALID_PARAM,          /**< 无效参数 */
-    FINGER_ERROR_UNINITIALIZED,          /**< 未初始化 */
-    FINGER_ERROR_NOT_FOUND,              /**< 未找到实例 */
-    FINGER_ERROR_ALREADY_EXIST,          /**< 同名实例已存在 */
-    FINGER_ERROR_PACKER_ERROR,           /**< 打包器出错 */
-    FINGER_ERROR_BUSY,                   /**< 电机忙（有待处理命令） */
+    FINGER_OK = 0, /**< 操作成功 */
+    FINGER_OK_EXISTED, /**< 已初始化 */
+    FINGER_ERROR_NULL_PTR, /**< 空指针错误 */
+    FINGER_ERROR_INVALID_PARAM, /**< 无效参数 */
+    FINGER_ERROR_UNINITIALIZED, /**< 未初始化 */
+    FINGER_ERROR_NOT_FOUND, /**< 未找到实例 */
+    FINGER_ERROR_ALREADY_EXIST, /**< 同名实例已存在 */
+    FINGER_ERROR_PACKER_ERROR, /**< 打包器出错 */
+    FINGER_ERROR_BUSY, /**< 电机忙（有待处理命令） */
 } finger_error_t;
 
 /**
  * @brief 手指电机工作模式枚举（对应电机状态返回值）
  */
 typedef enum __attribute__((packed)) {
-    FINGER_MODE_IDLE = 0,                /**< 空闲模式 */
-    FINGER_MODE_SPEED,                   /**< 速度模式 */
-    FINGER_MODE_POSITION,                /**< 位置模式 */
-    FINGER_MODE_TORQUE,                  /**< 力矩模式 */
-    FINGER_MODE_CURRENT,                 /**< 电流模式 */
-    FINGER_MODE_ZERO,                    /**< 0°校准模式 */
-    FINGER_MODE_OPEN,                    /**< 开环模式 */
-    FINGER_MODE_FR,                      /**< 正反转运动模式 */
-    FINGER_MODE_SPEED_POSITION,          /**< 位置+速度闭环模式 */
+    FINGER_MODE_IDLE = 0, /**< 空闲模式 */
+    FINGER_MODE_SPEED, /**< 速度模式 */
+    FINGER_MODE_POSITION, /**< 位置模式 */
+    FINGER_MODE_TORQUE, /**< 力矩模式 */
+    FINGER_MODE_CURRENT, /**< 电流模式 */
+    FINGER_MODE_ZERO, /**< 0°校准模式 */
+    FINGER_MODE_OPEN, /**< 开环模式 */
+    FINGER_MODE_FR, /**< 正反转运动模式 */
+    FINGER_MODE_SPEED_POSITION, /**< 位置+速度闭环模式 */
 } finger_mode_t;
 
 /**
  * @brief 手指电机待发送命令类型枚举（内部使用）
  */
 typedef enum __attribute__((packed)) {
-    FINGER_CMD_NONE = 0,                 /**< 无待处理命令 */
-    FINGER_CMD_START,                    /**< 启动电机 */
-    FINGER_CMD_STOP,                     /**< 急停 */
-    FINGER_CMD_PAUSE_RESUME,             /**< 暂停/恢复 */
-    FINGER_CMD_SAVE_FLASH,               /**< 参数装订（保存至Flash） */
-    FINGER_CMD_CLEAR_FAULT,              /**< 清除故障 */
-    FINGER_CMD_SET_SPEED,                /**< 速度模式 */
-    FINGER_CMD_SET_POSITION,             /**< 位置模式（带力矩） */
-    FINGER_CMD_SET_POSITION_SPEED,       /**< 位置+速度闭环模式 */
-    FINGER_CMD_READ_POSITION,            /**< 查询电机电角度 */
-    FINGER_CMD_READ_STATUS,              /**< 查询电机状态 */
-    FINGER_CMD_READ_OUTPUT_ANGLE,       /**< 查询输出轴角度 */
-    FINGER_CMD_SET_ID,                   /**< 修改电机ID */
-    FINGER_CMD_SET_REDUCTION_RATIO,      /**< 写减速比 */
-    FINGER_CMD_SET_POLE_PAIRS,           /**< 写极对数 */
-    FINGER_CMD_READ_VERSION,             /**< 读取软件版本号 */
-    FINGER_CMD_READ_ID,                  /**< 读取电机ID */
+    FINGER_CMD_NONE = 0, /**< 无待处理命令 */
+    FINGER_CMD_START, /**< 启动电机 */
+    FINGER_CMD_STOP, /**< 急停 */
+    FINGER_CMD_PAUSE_RESUME, /**< 暂停/恢复 */
+    FINGER_CMD_SAVE_FLASH, /**< 参数装订（保存至Flash） */
+    FINGER_CMD_CLEAR_FAULT, /**< 清除故障 */
+    FINGER_CMD_SET_SPEED, /**< 速度模式 */
+    FINGER_CMD_SET_POSITION, /**< 位置模式（带力矩） */
+    FINGER_CMD_SET_POSITION_SPEED, /**< 位置+速度闭环模式 */
+    FINGER_CMD_READ_POSITION, /**< 查询电机电角度 */
+    FINGER_CMD_READ_STATUS, /**< 查询电机状态 */
+    FINGER_CMD_READ_OUTPUT_ANGLE, /**< 查询输出轴角度 */
+    FINGER_CMD_SET_ID, /**< 修改电机ID */
+    FINGER_CMD_SET_REDUCTION_RATIO, /**< 写减速比 */
+    FINGER_CMD_SET_POLE_PAIRS, /**< 写极对数 */
+    FINGER_CMD_READ_VERSION, /**< 读取软件版本号 */
+    FINGER_CMD_READ_ID, /**< 读取电机ID */
 } finger_cmd_type_t;
 
 /* 前向声明 ----------------------------------------------------------------*/
@@ -99,42 +99,42 @@ typedef void (*finger_response_cb_t)(finger_handle_t* handle,
  * @brief 手指电机配置结构体
  */
 typedef struct {
-    const char* name;                    /**< 电机名称（唯一标识） */
-    uint8_t motor_id;                    /**< 电机 RS-485 地址（1-254） */
-    rs485_port_t rs485_port;             /**< 所属 RS-485 总线端口 */
-    uint8_t* tx_buffer;                  /**< 发送帧缓冲区（packer 输出用） */
-    uint16_t tx_buffer_len;              /**< 发送帧缓冲区大小（建议 >= 32 字节） */
-    uint16_t reduction_ratio;            /**< 减速比（默认 1080） */
-    uint8_t pole_pairs;                  /**< 电机极对数（默认 2） */
+    const char* name; /**< 电机名称（唯一标识） */
+    uint8_t motor_id; /**< 电机 RS-485 地址（1-254） */
+    rs485_port_t rs485_port; /**< 所属 RS-485 总线端口 */
+    uint8_t* tx_buffer; /**< 发送帧缓冲区（packer 输出用） */
+    uint16_t tx_buffer_len; /**< 发送帧缓冲区大小（建议 >= 32 字节） */
+    uint16_t reduction_ratio; /**< 减速比（默认 1080） */
+    uint8_t pole_pairs; /**< 电机极对数（默认 2） */
 } finger_config_t;
 
 /**
  * @brief 手指电机控制句柄
  */
 struct finger_handle {
-    finger_config_t config;              /**< 配置副本 */
-    clist_head_t node;                   /**< clist 链表节点 */
-    protocol_packer_context_t packer;    /**< 内嵌协议打包器 */
+    finger_config_t config; /**< 配置副本 */
+    clist_head_t node; /**< clist 链表节点 */
+    protocol_packer_context_t packer; /**< 内嵌协议打包器 */
 
     /* 运行时状态 */
-    finger_mode_t mode;                  /**< 当前工作模式 */
-    uint16_t position;                   /**< 最近一次查询的电角度（0-359°） */
-    uint32_t output_angle_raw;           /**< 最近一次查询的输出轴角度原始值 */
-    uint8_t status;                      /**< 最近一次查询的状态信息 */
+    finger_mode_t mode; /**< 当前工作模式 */
+    uint16_t position; /**< 最近一次查询的电角度（0-359°） */
+    uint32_t output_angle_raw; /**< 最近一次查询的输出轴角度原始值 */
+    uint8_t status; /**< 最近一次查询的状态信息 */
 
     /* 待发送命令 */
-    finger_cmd_type_t pending_cmd;       /**< 待发送的命令类型 */
-    uint32_t pending_position;           /**< 目标位置值 */
-    uint32_t pending_speed;              /**< 目标速度值 */
-    uint16_t pending_torque;             /**< 目标力矩值 */
-    uint8_t pending_new_id;              /**< 新 ID（修改 ID 命令） */
+    finger_cmd_type_t pending_cmd; /**< 待发送的命令类型 */
+    uint32_t pending_position; /**< 目标位置值 */
+    uint32_t pending_speed; /**< 目标速度值 */
+    uint16_t pending_torque; /**< 目标力矩值 */
+    uint8_t pending_new_id; /**< 新 ID（修改 ID 命令） */
 
     /* 回调 */
-    finger_response_cb_t response_cb;    /**< 应答回调 */
-    void* callback_user_data;            /**< 回调透传数据 */
+    finger_response_cb_t response_cb; /**< 应答回调 */
+    void* callback_user_data; /**< 回调透传数据 */
 
-    bool initialized;                    /**< 初始化完成标志 */
-    bool response_pending;               /**< 等待应答标志 */
+    bool initialized; /**< 初始化完成标志 */
+    bool response_pending; /**< 等待应答标志 */
 };
 
 /* Exported constants --------------------------------------------------------*/
@@ -142,10 +142,10 @@ struct finger_handle {
 /* Exported macro ------------------------------------------------------------*/
 
 /** @brief 判断手指电机错误码是否表示成功 */
-#define FINGER_IS_OK(err)    ((err) >= 0)
+#define FINGER_IS_OK(err) ((err) >= 0)
 
 /** @brief 判断手指电机错误码是否表示失败 */
-#define FINGER_IS_ERR(err)   ((err) < 0)
+#define FINGER_IS_ERR(err) ((err) < 0)
 
 /** @brief 默认帧缓冲区大小 */
 #define FINGER_TX_BUFFER_SIZE 32

@@ -47,9 +47,8 @@
 #define DMA_CH_UART15_RX 1
 #define DMA_CH_UART14_TX 4
 #define DMA_CH_UART14_RX 5
-#define DMA_CH_UART8_TX  6
-#define DMA_CH_UART8_RX  7
-
+#define DMA_CH_UART8_TX 6
+#define DMA_CH_UART8_RX 7
 
 /* --------------------------------------------------------------------------
  * 端口上下文
@@ -68,9 +67,9 @@ typedef struct {
     rs485_rx_callback_t rx_cb;
 
     /* 发送 — 零拷贝 DMA */
-    const uint8_t *tx_buf;   /* 当前 DMA 源缓冲区（NULL = 空闲） */
-    uint32_t tx_len;          /* 当前传输字节数 */
-    bool tx_busy;             /* DMA 传输进行中 */
+    const uint8_t* tx_buf; /* 当前 DMA 源缓冲区（NULL = 空闲） */
+    uint32_t tx_len; /* 当前传输字节数 */
+    bool tx_busy; /* DMA 传输进行中 */
 } rs485_port_ctx_t;
 
 static rs485_port_ctx_t s_ports[RS485_PORT_MAX];
@@ -244,10 +243,10 @@ uint32_t rs485_rx_read(rs485_port_t port, uint8_t* out, uint32_t max_len)
  * 收尾：flush UART 移位寄存器 + 拉低 DE + 标记空闲。
  * 调用者通过 rs485_send_dma() 传入的 data 缓冲区此时可以安全复用。
  */
-static void rs485_tx_dma_done(void *user_data)
+static void rs485_tx_dma_done(void* user_data)
 {
     rs485_port_t port = (rs485_port_t)(uintptr_t)user_data;
-    rs485_port_ctx_t *ctx = &s_ports[port];
+    rs485_port_ctx_t* ctx = &s_ports[port];
 
     /* 等待移位寄存器排空，然后拉低 DE 回到接收模式 */
     bsp_uart_flush(&ctx->uart_cfg);
@@ -258,13 +257,13 @@ static void rs485_tx_dma_done(void *user_data)
     ctx->tx_len = 0;
 }
 
-hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len)
+hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len)
 {
     if (port >= RS485_PORT_MAX || !data || len == 0) {
         return status_fail;
     }
 
-    rs485_port_ctx_t *ctx = &s_ports[port];
+    rs485_port_ctx_t* ctx = &s_ports[port];
 
     /* DMA 忙则拒绝（RS-485 半双工：TX 期间不应有新请求） */
     if (ctx->tx_busy) {
@@ -279,7 +278,7 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len)
     /* 刷 D-Cache 确保 DMA 读取到 CPU 写入的最新数据 */
     {
         uint32_t flush_start = HPM_L1C_CACHELINE_ALIGN_DOWN((uint32_t)data);
-        uint32_t flush_end   = HPM_L1C_CACHELINE_ALIGN_UP((uint32_t)data + len);
+        uint32_t flush_end = HPM_L1C_CACHELINE_ALIGN_UP((uint32_t)data + len);
         l1c_dc_flush(flush_start, flush_end - flush_start);
     }
 
@@ -290,7 +289,7 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t *data, uint32_t len)
     return status_success;
 }
 
-hpm_stat_t rs485_send(rs485_port_t port, const uint8_t *data, uint32_t len)
+hpm_stat_t rs485_send(rs485_port_t port, const uint8_t* data, uint32_t len)
 {
     hpm_stat_t stat = rs485_send_dma(port, data, len);
     if (stat != status_success) {

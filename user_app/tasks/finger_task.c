@@ -24,10 +24,9 @@
 #include "finger_task.h"
 
 #include "board.h"
+#include "bsp_systick.h"
 #include "drv_rs485.h"
 #include "fsm.h"
-#include "hpm_clock_drv.h"
-#include "hpm_mchtmr_drv.h"
 #include "protocol_parser.h"
 
 #include <stdio.h>
@@ -37,16 +36,16 @@
 
 /** @brief 应答帧头 */
 static const uint8_t s_response_header[] = { 0xAA, 0x55 };
-#define RESPONSE_HEADER_LEN         2U
+#define RESPONSE_HEADER_LEN 2U
 
 /** @brief 每端口 parser 输入缓冲区大小 */
-#define PARSER_INPUT_BUF_SIZE      256U
+#define PARSER_INPUT_BUF_SIZE 256U
 
 /** @brief 每端口 parser 输出缓冲区大小 */
-#define PARSER_OUTPUT_BUF_SIZE     64U
+#define PARSER_OUTPUT_BUF_SIZE 64U
 
 /** @brief 主循环轮询中单次最大读取字节数 */
-#define MAX_RX_READ_PER_POLL       64U
+#define MAX_RX_READ_PER_POLL 64U
 
 /* Private types -------------------------------------------------------------*/
 
@@ -54,46 +53,45 @@ static const uint8_t s_response_header[] = { 0xAA, 0x55 };
  * @brief 端口发送 FSM 状态枚举
  */
 typedef enum {
-    PORT_TX_IDLE = 0,               /**< 空闲，可发送下一帧 */
-    PORT_TX_WAITING_RESPONSE,       /**< 等待应答 */
-    PORT_TX_STATE_COUNT             /**< 状态总数 */
+    PORT_TX_IDLE = 0, /**< 空闲，可发送下一帧 */
+    PORT_TX_WAITING_RESPONSE, /**< 等待应答 */
+    PORT_TX_STATE_COUNT /**< 状态总数 */
 } port_tx_state_t;
 
 /**
  * @brief 每端口运行时状态
  */
 typedef struct {
-    bool active;                                    /**< 端口是否已激活 */
-    rs485_port_t port;                              /**< 端口号 */
+    bool active; /**< 端口是否已激活 */
+    rs485_port_t port; /**< 端口号 */
 
     /* 协议解析器 */
-    protocol_parser_context_t parser;               /**< 应答帧解析器上下文 */
-    uint8_t parser_input_buf[PARSER_INPUT_BUF_SIZE];   /**< 解析器输入 kfifo 缓冲 */
+    protocol_parser_context_t parser; /**< 应答帧解析器上下文 */
+    uint8_t parser_input_buf[PARSER_INPUT_BUF_SIZE]; /**< 解析器输入 kfifo 缓冲 */
     uint8_t parser_output_buf[PARSER_OUTPUT_BUF_SIZE]; /**< 解析器输出缓冲 */
 
     /* 发送 FSM */
-    fsm_t tx_fsm;                                   /**< 发送状态机上下文 */
-    fsm_handler_t tx_handlers[PORT_TX_STATE_COUNT];  /**< 状态处理器表 */
+    fsm_t tx_fsm; /**< 发送状态机上下文 */
+    fsm_handler_t tx_handlers[PORT_TX_STATE_COUNT]; /**< 状态处理器表 */
     fsm_guard_t tx_transitions[PORT_TX_STATE_COUNT
-        * PORT_TX_STATE_COUNT];                      /**< 转换矩阵 */
+        * PORT_TX_STATE_COUNT]; /**< 转换矩阵 */
 
     /* 发送运行时数据 */
-    finger_handle_t* current_motor;                  /**< 当前等待应答的电机 */
-    uint32_t cmd_send_ticks;                        /**< 命令发送时刻（tick） */
-    uint32_t last_cmd_ticks;                        /**< 上一条命令完成时刻（tick） */
+    finger_handle_t* current_motor; /**< 当前等待应答的电机 */
+    uint32_t cmd_send_ms; /**< 命令发送时刻（毫秒） */
+    uint32_t last_cmd_ms; /**< 上一条命令完成时刻（毫秒） */
 
     /* 统计 */
-    uint32_t tx_count;                              /**< 累计发送帧数 */
-    uint32_t rx_count;                              /**< 累计接收帧数 */
-    uint32_t timeout_count;                         /**< 累计超时次数 */
+    uint32_t tx_count; /**< 累计发送帧数 */
+    uint32_t rx_count; /**< 累计接收帧数 */
+    uint32_t timeout_count; /**< 累计超时次数 */
 } port_ctx_t;
 
 /* Private variables ---------------------------------------------------------*/
 
-static port_ctx_t s_motor_port1;             /**< 电机端口1状态 (RS485_PORT_MOTOR1) */
-static port_ctx_t s_motor_port2;             /**< 电机端口2状态 (RS485_PORT_MOTOR2) — TX 镜像 + 独立 RX */
-static uint32_t s_ticks_per_ms;              /**< MCHTMR 每毫秒计数值 */
-static bool s_finger_task_initialized;       /**< 任务初始化标志 */
+static port_ctx_t s_motor_port1; /**< 电机端口1状态 (RS485_PORT_MOTOR1) */
+static port_ctx_t s_motor_port2; /**< 电机端口2状态 (RS485_PORT_MOTOR2) — TX 镜像 + 独立 RX */
+static bool s_finger_task_initialized; /**< 任务初始化标志 */
 
 /** @brief 发送状态名称表（FSM 调试用） */
 static const char* s_tx_state_names[] = {
@@ -103,9 +101,7 @@ static const char* s_tx_state_names[] = {
 
 /* Private function prototypes -----------------------------------------------*/
 
-static uint32_t finger_task_get_ticks(void);
-static uint32_t finger_task_ticks_to_ms(uint32_t ticks);
-static bool finger_task_is_timeout(uint32_t start_ticks, uint32_t timeout_ms);
+static bool finger_task_is_timeout(uint32_t start_ms, uint32_t timeout_ms);
 static uint16_t finger_parser_get_len_cb(uint8_t* buffer, uint16_t len);
 static protocol_parser_error_t finger_parser_check_cb(uint8_t* buffer,
     uint16_t len);
@@ -124,38 +120,14 @@ static finger_handle_t* finger_task_find_pending_motor(rs485_port_t port);
 /* Private functions ---------------------------------------------------------*/
 
 /**
- * @brief 获取系统 tick 值（MCHTMR 计数器）
- * @return tick 计数值
- */
-static uint32_t finger_task_get_ticks(void)
-{
-    return (uint32_t)mchtmr_get_count(HPM_MCHTMR);
-}
-
-/**
- * @brief tick 转毫秒
- * @param ticks tick 差值
- * @return 毫秒数
- */
-static uint32_t finger_task_ticks_to_ms(uint32_t ticks)
-{
-    if (s_ticks_per_ms == 0) {
-        return 0;
-    }
-    return ticks / s_ticks_per_ms;
-}
-
-/**
  * @brief 检查是否超时
- * @param start_ticks 起始 tick
+ * @param start_ms 起始毫秒时间戳
  * @param timeout_ms 超时毫秒数
  * @return true 已超时，false 未超时
  */
-static bool finger_task_is_timeout(uint32_t start_ticks, uint32_t timeout_ms)
+static bool finger_task_is_timeout(uint32_t start_ms, uint32_t timeout_ms)
 {
-    uint32_t now = finger_task_get_ticks();
-    uint32_t elapsed_ticks = now - start_ticks;
-    return finger_task_ticks_to_ms(elapsed_ticks) >= timeout_ms;
+    return (millis() - start_ms) >= timeout_ms;
 }
 
 /**
@@ -224,8 +196,8 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
     port_ctx_t* port_ctx = (port_ctx_t*)fsm_user_data(ctx);
 
     /* 检查命令间隔 */
-    if (port_ctx->last_cmd_ticks != 0) {
-        if (!finger_task_is_timeout(port_ctx->last_cmd_ticks,
+    if (port_ctx->last_cmd_ms != 0) {
+        if (!finger_task_is_timeout(port_ctx->last_cmd_ms,
                 FINGER_TASK_INTER_CMD_MS)) {
             return PORT_TX_IDLE;
         }
@@ -257,7 +229,7 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
     }
 
     /* 发送 */
-    uint32_t now_ticks = finger_task_get_ticks();
+    uint32_t now_ticks = millis();
     hpm_stat_t stat = rs485_send(port_ctx->port, frame, frame_len);
     if (stat != status_success) {
         printf("[FINGER] Port %d send failed: %d\n", port_ctx->port, stat);
@@ -265,7 +237,7 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
     }
 
     port_ctx->current_motor = motor;
-    port_ctx->cmd_send_ticks = now_ticks;
+    port_ctx->cmd_send_ms = now_ticks;
     port_ctx->tx_count++;
 
     return PORT_TX_WAITING_RESPONSE;
@@ -281,7 +253,7 @@ static fsm_state_t port_tx_waiting_handler(fsm_t* ctx)
     port_ctx_t* port_ctx = (port_ctx_t*)fsm_user_data(ctx);
 
     /* 检查超时 */
-    if (finger_task_is_timeout(port_ctx->cmd_send_ticks,
+    if (finger_task_is_timeout(port_ctx->cmd_send_ms,
             FINGER_TASK_RESPONSE_TIMEOUT_MS)) {
         port_ctx->timeout_count++;
 
@@ -300,7 +272,7 @@ static fsm_state_t port_tx_waiting_handler(fsm_t* ctx)
         }
 
         port_ctx->current_motor = NULL;
-        port_ctx->last_cmd_ticks = finger_task_get_ticks();
+        port_ctx->last_cmd_ms = millis();
 
         return PORT_TX_IDLE;
     }
@@ -435,7 +407,7 @@ static void finger_task_dispatch_response(port_ctx_t* port_ctx,
     /* 如果当前正在等待此电机的应答，通过 FSM 切换回 IDLE */
     if (port_ctx->current_motor == motor) {
         port_ctx->current_motor = NULL;
-        port_ctx->last_cmd_ticks = finger_task_get_ticks();
+        port_ctx->last_cmd_ms = millis();
         (void)fsm_goto(&port_ctx->tx_fsm, PORT_TX_IDLE);
     }
 }
@@ -473,13 +445,6 @@ void finger_task_init_transport(void)
         return;
     }
 
-    /* 计算 MCHTMR ticks/ms */
-    uint32_t mchtmr_freq = clock_get_frequency(clock_mchtmr0);
-    s_ticks_per_ms = mchtmr_freq / 1000;
-    if (s_ticks_per_ms == 0) {
-        s_ticks_per_ms = 1; /* 防止除零 */
-    }
-
     /* 初始化电机 RS-485 端口硬件（MOTOR1 + MOTOR2） */
     rs485_init(RS485_PORT_MOTOR1);
     rs485_init(RS485_PORT_MOTOR2);
@@ -489,15 +454,14 @@ void finger_task_init_transport(void)
     finger_task_init_port(&s_motor_port2, RS485_PORT_MOTOR2, "motor2_parser");
 
     s_finger_task_initialized = true;
-    printf("[FINGER] Transport initialized, %lu ticks/ms, ports: MOTOR1 + MOTOR2\n",
-        (unsigned long)s_ticks_per_ms);
+    printf("[FINGER] Transport initialized, MCHTMR=24MHz, ports: MOTOR1 + MOTOR2\n");
 }
 
 void finger_task_init(void)
 {
     /* @deprecated 向后兼容空壳，实际初始化由 motor_link_task_init() 完成 */
     (void)printf("[FINGER] finger_task_init() is deprecated, "
-        "use motor_link_task_init() instead\n");
+                 "use motor_link_task_init() instead\n");
 }
 
 void finger_task_poll(void)
