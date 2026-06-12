@@ -220,12 +220,11 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
         return PORT_TX_IDLE;
     }
 
-    /* 诊断：打印前 2 帧发送数据，验证打包正确性 */
-    if (port_ctx->tx_count < 2) {
-        LOG_D("finger", "TX%lu (len=%u)",
-            (unsigned long)port_ctx->tx_count, frame_len);
-        LOG_HEXDUMP("finger", frame, frame_len);
-    }
+    /* 诊断：打印每帧发送数据 */
+    LOG_I("finger", "TX:%d帧,端口%d,电机ID=0x%02X(len=%u)",
+        (unsigned int)port_ctx->tx_count, port_ctx->port,
+        (unsigned int)motor->config.motor_id, frame_len);
+    // LOG_HEXDUMP("finger", frame, frame_len);
 
     /* 发送 */
     uint32_t now_ticks = millis();
@@ -364,6 +363,11 @@ static void finger_task_process_rx(port_ctx_t* port_ctx)
     read_len = rs485_rx_read(port_ctx->port, buf, read_len);
 
     if (read_len > 0) {
+        /* 打印原始 RX 数据 */
+        LOG_I("finger", "RX 端口%d 收到%u字节", port_ctx->port,
+            (unsigned int)read_len);
+        LOG_HEXDUMP("finger", buf, read_len);
+
         protocol_parser_error_t err = protocol_parser_feed(
             &port_ctx->parser, buf, read_len);
         if (err != PROTOCOL_PARSER_OK) {
@@ -393,8 +397,13 @@ static void finger_task_dispatch_response(port_ctx_t* port_ctx,
     uint8_t motor_id = frame[3];
     finger_handle_t* motor = finger_get_by_id(motor_id, port_ctx->port);
 
+    LOG_I("finger", "RX 端口%d 解析完成: 电机=0x%02X 帧长=%u",
+        port_ctx->port, (unsigned int)motor_id, (unsigned int)len);
+    LOG_HEXDUMP("finger", frame, len);
+
     if (!motor) {
-        /* 未找到对应电机实例 */
+        LOG_W("finger", "RX 端口%d 未找到电机实例 0x%02X",
+            port_ctx->port, (unsigned int)motor_id);
         return;
     }
 

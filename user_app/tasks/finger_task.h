@@ -39,10 +39,10 @@ extern "C" {
     (FINGER_TASK_MAX_MOTORS_PORT1 + FINGER_TASK_MAX_MOTORS_PORT2)
 
 /** @brief 应答超时时间（毫秒） */
-#define FINGER_TASK_RESPONSE_TIMEOUT_MS 50U
+#define FINGER_TASK_RESPONSE_TIMEOUT_MS 2U
 
 /** @brief 命令间隔时间（毫秒），协议要求 ≥1ms */
-#define FINGER_TASK_INTER_CMD_MS 5U
+#define FINGER_TASK_INTER_CMD_MS 2U
 
 /* Exported macro ------------------------------------------------------------*/
 

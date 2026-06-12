@@ -301,6 +301,18 @@ void drv_can_recover(drv_can_context_t* ctx)
     }
 
     /*
+     * 防止重复清除 INIT 导致恢复计数器被反复复位:
+     * 若 INIT 已被清除 (上次 recover 调用已启动恢复流程),
+     * 则说明恢复正在进行中, 不应再次写入 CCCR.INIT。
+     * 每次清除 INIT 都会复位 128×11 隐性位计数器,
+     * 重复清除会导致恢复永远无法完成。
+     */
+    if (!(base->CCCR & MCAN_CCCR_INIT_MASK)) {
+        /* 恢复流程已在运行中, 等待完成 */
+        return;
+    }
+
+    /*
      * 总线关闭恢复流程 (ISO 11898-1):
      * 1. MCAN 进入 bus-off 时已自动设置 CCCR.INIT
      * 2. 清除 CCCR.INIT, MCAN 开始等待 128×11 个隐性位

@@ -28,6 +28,7 @@
 #include "log.h"
 
 #include <string.h>
+#include "stdlib.h"
 
 /* Private constants ---------------------------------------------------------*/
 

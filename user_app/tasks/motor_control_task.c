@@ -64,6 +64,7 @@ static uint32_t s_rx_err_count; /**< 协议帧处理错误计数 */
 static uint32_t s_last_heartbeat_ms;
 static bool s_safe_mode;
 static bool s_ep_warned;
+static bool s_bus_off_recovering; /**< BUS_OFF 恢复流程进行中 */
 
 /* Private function prototypes -----------------------------------------------*/
 
@@ -188,6 +189,7 @@ void motor_control_task_init_transport(void)
     s_rx_err_count = 0;
     s_safe_mode = false;
     s_ep_warned = false;
+    s_bus_off_recovering = false;
 
     LOG_I("motor_ctrl", "传输层已初始化: CAN4 1M/5M (解析器+打包器)");
 }
@@ -215,12 +217,25 @@ void motor_control_task_poll(void)
     /* 1. 检查 CAN 总线状态 */
     drv_can_state_t bus_state = drv_can_get_state(s_can_ctx);
     if (bus_state == DRV_CAN_STATE_BUS_OFF) {
-        LOG_W("motor_ctrl", "CAN 总线关闭, 正在恢复...");
-        drv_can_recover(s_can_ctx);
+        if (!s_bus_off_recovering) {
+            /* 首次检测到 BUS_OFF → 启动恢复流程 */
+            LOG_W("motor_ctrl", "CAN 总线关闭, 启动恢复流程...");
+            drv_can_recover(s_can_ctx);
+            s_bus_off_recovering = true;
+            s_ep_warned = false;
+        }
+        /* 恢复进行中 → 静默等待 (约 1.4ms @1Mbps, 128×11 隐性位) */
         s_last_heartbeat_ms = now;
-        s_ep_warned = false;
         return;
     }
+
+    if (s_bus_off_recovering) {
+        /* 总线已脱离 BUS_OFF 状态 */
+        LOG_I("motor_ctrl", "CAN 总线已恢复: %s",
+            motor_control_task_bus_state_name(bus_state));
+        s_bus_off_recovering = false;
+    }
+
     if (bus_state == DRV_CAN_STATE_ERROR_PASSIVE) {
         if (!s_ep_warned) {
             LOG_W("motor_ctrl", "CAN 总线错误被动");
