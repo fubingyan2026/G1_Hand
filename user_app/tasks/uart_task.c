@@ -17,7 +17,7 @@
 #include "board.h"
 #include "drv_rs485.h"
 #include "hpm_clock_drv.h"
-#include <stdio.h>
+#include "log.h"
 
 /* --------------------------------------------------------------------------
  * 配置
@@ -57,17 +57,15 @@ static void on_rx_frame(rs485_port_t port, uint8_t* data, uint32_t len)
 
 void uart_task_init(void)
 {
-    printf("\n========================================\n");
-    printf("  G1_Hand RS-485 DMA 收发任务启动\n");
-    printf("========================================\n\n");
+    LOG_I("uart", "RS-485 DMA 收发任务启动");
 
     /* 1. 初始化全部三路 RS-485 端口 */
-    printf("[UART] 初始化 RS-485 端口...\n");
+    LOG_I("uart", "初始化 RS-485 端口...");
     rs485_init(TEST_PORT);
 
     /* 2. 注册接收回调 */
     rs485_set_rx_callback(TEST_PORT, on_rx_frame);
-    printf("[UART] 三路端口初始化完成，DMA 环形接收已启动\n");
+    LOG_I("uart", "三路端口初始化完成, DMA 环形接收已启动");
 }
 
 /**
@@ -98,9 +96,9 @@ void uart_task_poll(void)
         s_tick = 0;
         hpm_stat_t stat = rs485_send(TEST_PORT, s_test_msg, sizeof(s_test_msg) - 1);
         if (stat == status_success) {
-            printf("[UART] 测试消息发送成功\n");
+            LOG_D("uart", "测试消息发送成功");
         } else {
-            printf("[UART] 测试消息发送失败! stat=%d\n", stat);
+            LOG_E("uart", "测试消息发送失败, 状态码=%d", stat);
         }
     }
 }

@@ -29,6 +29,8 @@
 #include "fsm.h"
 #include "protocol_parser.h"
 
+#include "log.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -220,19 +222,16 @@ static fsm_state_t port_tx_idle_handler(fsm_t* ctx)
 
     /* 诊断：打印前 2 帧发送数据，验证打包正确性 */
     if (port_ctx->tx_count < 2) {
-        printf("[FINGER] TX%lu (len=%u): ",
+        LOG_D("finger", "TX%lu (len=%u)",
             (unsigned long)port_ctx->tx_count, frame_len);
-        for (uint16_t i = 0; i < frame_len; i++) {
-            printf("%02X ", frame[i]);
-        }
-        printf("\n");
+        LOG_HEXDUMP("finger", frame, frame_len);
     }
 
     /* 发送 */
     uint32_t now_ticks = millis();
     hpm_stat_t stat = rs485_send(port_ctx->port, frame, frame_len);
     if (stat != status_success) {
-        printf("[FINGER] Port %d send failed: %d\n", port_ctx->port, stat);
+        LOG_E("finger", "端口%d 发送失败, 错误码=%d", port_ctx->port, stat);
         return PORT_TX_IDLE;
     }
 
@@ -311,7 +310,7 @@ static void finger_task_init_port(port_ctx_t* ctx, rs485_port_t port,
 
     protocol_parser_error_t err = protocol_parser_init(&ctx->parser, &parser_cfg);
     if (err != PROTOCOL_PARSER_OK) {
-        printf("[FINGER] Port %d parser init failed: %d\n", port, err);
+        LOG_E("finger", "端口%d 协议解析器初始化失败, 错误码=%d", port, err);
         return;
     }
 
@@ -337,13 +336,13 @@ static void finger_task_init_port(port_ctx_t* ctx, rs485_port_t port,
 
     fsm_err_t fsm_err = fsm_init(&ctx->tx_fsm, PORT_TX_IDLE, &fsm_cfg);
     if (fsm_err != FSM_OK) {
-        printf("[FINGER] Port %d FSM init failed: %d\n", port, fsm_err);
+        LOG_E("finger", "端口%d FSM 初始化失败, 错误码=%d", port, fsm_err);
         return;
     }
 
     ctx->active = true;
 
-    printf("[FINGER] Port %d (%s) initialized (parser + FSM)\n", port, name);
+    LOG_I("finger", "端口%d (%s) 已初始化 (解析器+FSM)", port, name);
 }
 
 /* --- 接收处理 --- */
@@ -454,14 +453,13 @@ void finger_task_init_transport(void)
     finger_task_init_port(&s_motor_port2, RS485_PORT_MOTOR2, "motor2_parser");
 
     s_finger_task_initialized = true;
-    printf("[FINGER] Transport initialized, MCHTMR=24MHz, ports: MOTOR1 + MOTOR2\n");
+    LOG_I("finger", "传输层已初始化, MCHTMR=24MHz, 端口: MOTOR1+MOTOR2");
 }
 
 void finger_task_init(void)
 {
     /* @deprecated 向后兼容空壳，实际初始化由 motor_link_task_init() 完成 */
-    (void)printf("[FINGER] finger_task_init() is deprecated, "
-                 "use motor_link_task_init() instead\n");
+    LOG_W("finger", "finger_task_init() 已弃用, 请使用 motor_link_task_init()");
 }
 
 void finger_task_poll(void)

@@ -178,7 +178,7 @@ void board_init(void)
 {
     //board_turnoff_rgb_led();
     board_init_clock();
-    board_init_console();
+    //board_init_console();
     board_init_pmp();
 #ifdef INIT_EXT_RAM_FOR_DATA
     board_verify_sdram_card_inserted();
@@ -187,7 +187,7 @@ void board_init(void)
     board_print_clock_freq();
 #endif
 #if BOARD_SHOW_BANNER
-    board_print_banner();
+    //board_print_banner();
 #endif
 }
 

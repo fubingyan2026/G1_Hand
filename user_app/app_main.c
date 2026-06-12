@@ -16,6 +16,7 @@
 #include "bsp_systick.h"
 #include "drv_led.h"
 #include "led_task.h"
+#include "log_task.h"
 #include "motor_link_task.h"
 
 #include <stdio.h>
@@ -27,6 +28,8 @@ int main(void)
 
     /* 初始化系统节拍（MCHTMR → 延时/时间戳） */
     delay_init();
+    /* 初始化日志输出任务（log 模块 + UART0 DMA 驱动） */
+    log_task_init();
 
     /* 初始化 LED 闪烁任务（250ms 循环闪烁） */
     led_task_init();
@@ -38,6 +41,7 @@ int main(void)
     /* 主循环 */
     while (1) {
         led_task_poll();
+        log_task_poll();
         motor_link_task_poll();
     }
 

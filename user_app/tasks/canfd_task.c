@@ -16,7 +16,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "canfd_task.h"
 
-#include <stdio.h>
+#include "log.h"
+
 #include <string.h>
 
 #include "bsp_systick.h"
@@ -94,12 +95,12 @@ void canfd_task_init(void)
         .irq_priority = 1,
     };
 
-    printf("\n[CANFD] Initializing CAN4 (PA16/PA17/PA18)...\n");
+    LOG_I("canfd", "正在初始化 CAN4 (PA16/PA17/PA18)...");
 
     /* 初始化 CAN4 实例 */
     ctx = drv_can_init(&can4_config);
     if (!ctx) {
-        printf("[CANFD] ERROR: drv_can_init failed!\n");
+        LOG_E("canfd", "drv_can_init() 失败");
         return;
     }
 
@@ -112,9 +113,9 @@ void canfd_task_init(void)
     s_rx_count = 0;
     s_can_ctx = ctx;
 
-    printf("[CANFD] CAN4 initialized, nominal=%u bps, data=%u bps\n",
+    LOG_I("canfd", "CAN4 已初始化, 标称速率=%u bps, 数据速率=%u bps",
         DRV_CAN_DEFAULT_NOMINAL_BAUDRATE, DRV_CAN_DEFAULT_DATA_BAUDRATE);
-    printf("[CANFD] RX callback registered, TX interval=%u ms\n\n",
+    LOG_I("canfd", "RX 回调已注册, TX 间隔=%u ms",
         CANFD_TX_INTERVAL_MS);
 }
 
@@ -134,11 +135,11 @@ void canfd_task_poll(void)
 
             /* 打印接收信息 */
             if (rx_msg.use_ext_id) {
-                printf("[CANFD] RX ext=0x%08lX dlc=%u fd=%u brs=%u\n",
+                LOG_D("canfd", "RX 扩展帧 ID=0x%08lX DLC=%u FD=%u BRS=%u",
                     (unsigned long)rx_msg.ext_id, rx_msg.dlc,
                     rx_msg.canfd_frame, rx_msg.bitrate_switch);
             } else {
-                printf("[CANFD] RX std=0x%03lX dlc=%u fd=%u brs=%u\n",
+                LOG_D("canfd", "RX 标准帧 ID=0x%03lX DLC=%u FD=%u BRS=%u",
                     (unsigned long)rx_msg.std_id, rx_msg.dlc,
                     rx_msg.canfd_frame, rx_msg.bitrate_switch);
             }
@@ -149,7 +150,7 @@ void canfd_task_poll(void)
     {
         drv_can_state_t state = drv_can_get_state(s_can_ctx);
         if (state == DRV_CAN_STATE_BUS_OFF) {
-            printf("[CANFD] BUS-OFF detected, recovering...\n");
+            LOG_W("canfd", "CAN 总线关闭, 正在恢复...");
             drv_can_recover(s_can_ctx);
             s_last_tx_ms = canfd_task_get_ticks();
             return;
@@ -157,7 +158,7 @@ void canfd_task_poll(void)
         if (state == DRV_CAN_STATE_ERROR_PASSIVE) {
             static bool s_ep_warned;
             if (!s_ep_warned) {
-                printf("[CANFD] WARNING: error-passive\n");
+                LOG_W("canfd", "CAN 总线错误被动");
                 s_ep_warned = true;
             }
         }
@@ -190,7 +191,7 @@ void canfd_task_poll(void)
         if (err == DRV_CAN_OK) {
 
         } else {
-            printf("[CANFD] TX #%u: ERROR %d\n",
+            LOG_E("canfd", "TX #%u 发送失败, 错误码=%d",
                 (unsigned int)s_tx_counter, (int)err);
         }
 

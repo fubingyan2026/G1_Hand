@@ -25,7 +25,8 @@
 #include "motor_control.h"
 #include "motor_control_task.h"
 
-#include <stdio.h>
+#include "log.h"
+
 #include <string.h>
 
 /* Private constants ---------------------------------------------------------*/
@@ -133,15 +134,13 @@ void motor_link_task_init(void)
         return;
     }
 
-    printf("\n[MOTOR_LINK] ========================================\n");
-    printf("[MOTOR_LINK] Initializing motor data link...\n");
-    printf("[MOTOR_LINK] Mapping: %u motors (%u on PORT1, %u on PORT2)\n",
+    LOG_I("motor_link", "初始化电机数据链路, 共 %u 个电机 (端口1: %u, 端口2: %u)",
         MOTOR_LINK_MAX_MOTORS, MOTOR_LINK_PORT1_COUNT, MOTOR_LINK_PORT2_COUNT);
 
     /* --- 阶段 1: 初始化 finger 服务层 --- */
     finger_error_t f_err = finger_init();
     if (FINGER_IS_ERR(f_err)) {
-        printf("[MOTOR_LINK] ERROR: finger_init() failed: %d\n", (int)f_err);
+        LOG_E("motor_link", "finger_init() 失败, 错误码=%d", (int)f_err);
         return;
     }
 
@@ -167,7 +166,7 @@ void motor_link_task_init(void)
 
         f_err = finger_register_static(&cfg, &s_finger_instances[i]);
         if (FINGER_IS_ERR(f_err)) {
-            printf("[MOTOR_LINK] Register finger %s (CAN-ID:%u, PORT%u) failed: %d\n",
+            LOG_E("motor_link", "注册手指 %s (CAN-ID:%u, 端口%u) 失败, 错误码=%d",
                 cfg.name, entry->motor_id,
                 (entry->finger_port == RS485_PORT_MOTOR1) ? 1U : 2U,
                 (int)f_err);
@@ -180,7 +179,7 @@ void motor_link_task_init(void)
     /* --- 阶段 5: 初始化 motor_control 服务层 --- */
     motor_control_error_t mc_err = motor_control_init();
     if (MOTOR_CONTROL_IS_ERR(mc_err)) {
-        printf("[MOTOR_LINK] ERROR: motor_control_init() failed: %d\n", (int)mc_err);
+        LOG_E("motor_link", "motor_control_init() 失败, 错误码=%d", (int)mc_err);
         return;
     }
 
@@ -206,12 +205,12 @@ void motor_link_task_init(void)
             finger_set_response_callback(s_motor_ctrl_instances[i].finger,
                 motor_control_on_finger_response, &s_motor_ctrl_instances[i]);
 
-            printf("[MOTOR_LINK] Linked: CAN-ID:%u → RS485-ID:%u (PORT%u, %s)\n",
+            LOG_I("motor_link", "已连接: CAN-ID:%u → RS485-ID:%u (端口%u, %s)",
                 entry->motor_id, entry->finger_motor_id,
                 (entry->finger_port == RS485_PORT_MOTOR1) ? 1U : 2U,
                 s_motor_ctrl_names[i]);
         } else {
-            printf("[MOTOR_LINK] Register motor %s (CAN-ID:%u) failed: %d\n",
+            LOG_E("motor_link", "注册电机 %s (CAN-ID:%u) 失败, 错误码=%d",
                 s_motor_ctrl_names[i], entry->motor_id, (int)mc_err);
         }
     }
@@ -221,10 +220,8 @@ void motor_link_task_init(void)
 
     s_motor_link_initialized = true;
 
-    printf("[MOTOR_LINK] Initialization complete: %u motors linked, "
-           "%lu ms/ticks\n",
-        MOTOR_LINK_MAX_MOTORS, (unsigned long)24000);
-    printf("[MOTOR_LINK] ========================================\n\n");
+    LOG_I("motor_link", "初始化完成: %u 个电机已连接",
+        MOTOR_LINK_MAX_MOTORS);
 }
 
 void motor_link_task_poll(void)

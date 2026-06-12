@@ -18,7 +18,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "motor_control.h"
 
-#include <stdio.h>
+#include "log.h"
+
 #include <string.h>
 
 /* Private constants ---------------------------------------------------------*/
@@ -145,7 +146,7 @@ motor_control_error_t motor_control_register_static(
     finger_handle_t* finger = finger_get_by_id(config->finger_motor_id,
         config->finger_port);
     if (!finger) {
-        printf("[MOTOR_CTRL] ERROR: finger motor_id=%u port=%u not found\n",
+        LOG_E("motor_ctrl", "未找到手指电机, motor_id=%u, 端口=%u",
             (unsigned int)config->finger_motor_id,
             (unsigned int)config->finger_port);
         return MOTOR_CONTROL_ERROR_NOT_FOUND;
@@ -167,7 +168,7 @@ motor_control_error_t motor_control_register_static(
     clist_add_tail(&s_motor_control_head, &instance->node);
     instance->initialized = true;
 
-    printf("[MOTOR_CTRL] Registered motor %u -> finger_id=%u port=%u\n",
+    LOG_I("motor_ctrl", "已注册电机 %u → finger_id=%u, 端口=%u",
         (unsigned int)config->motor_id,
         (unsigned int)config->finger_motor_id,
         (unsigned int)config->finger_port);
@@ -567,7 +568,7 @@ static motor_control_error_t motor_control_dispatch_control(
     }
 
     if (FINGER_IS_ERR(finger_err)) {
-        printf("[MOTOR_CTRL] finger cmd 0x%02X failed: %d\n",
+        LOG_E("motor_ctrl", "手指命令 0x%02X 失败, 错误码=%d",
             (unsigned int)cmd, (int)finger_err);
         return MOTOR_CONTROL_ERROR_RS485_FAIL;
     }

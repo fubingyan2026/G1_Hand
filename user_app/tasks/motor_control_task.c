@@ -24,7 +24,8 @@
 #include "protocol_packer.h"
 #include "protocol_parser.h"
 
-#include <stdio.h>
+#include "log.h"
+
 #include <string.h>
 
 /* Private constants ---------------------------------------------------------*/
@@ -208,11 +209,11 @@ void motor_control_task_init_transport(void)
         .irq_priority = 1,
     };
 
-    printf("\n[MOTOR_CTRL_TASK] Initializing CAN4...\n");
+    LOG_I("motor_ctrl", "正在初始化 CAN4...");
 
     s_can_ctx = drv_can_init(&can4_config);
     if (!s_can_ctx) {
-        printf("[MOTOR_CTRL_TASK] ERROR: drv_can_init failed!\n");
+        LOG_E("motor_ctrl", "drv_can_init() 失败");
         return;
     }
 
@@ -236,7 +237,7 @@ void motor_control_task_init_transport(void)
     protocol_parser_error_t parser_err = protocol_parser_init(&s_rx_parser,
         &parser_cfg);
     if (parser_err != PROTOCOL_PARSER_OK) {
-        printf("[MOTOR_CTRL_TASK] ERROR: parser init failed: %d\n",
+        LOG_E("motor_ctrl", "协议解析器初始化失败, 错误码=%d",
             (int)parser_err);
         return;
     }
@@ -258,7 +259,7 @@ void motor_control_task_init_transport(void)
     protocol_packer_error_t packer_err = protocol_packer_init(&s_tx_packer,
         &packer_cfg);
     if (packer_err != PROTOCOL_PACKER_OK) {
-        printf("[MOTOR_CTRL_TASK] ERROR: packer init failed: %d\n",
+        LOG_E("motor_ctrl", "协议打包器初始化失败, 错误码=%d",
             (int)packer_err);
         return;
     }
@@ -271,15 +272,13 @@ void motor_control_task_init_transport(void)
     s_safe_mode = false;
     s_ep_warned = false;
 
-    printf("[MOTOR_CTRL_TASK] Transport initialized: CAN4 1M/5M "
-           "(parser + packer)\n");
+    LOG_I("motor_ctrl", "传输层已初始化: CAN4 1M/5M (解析器+打包器)");
 }
 
 void motor_control_task_init(void)
 {
     /* @deprecated 向后兼容空壳，实际初始化由 motor_link_task_init() 完成 */
-    (void)printf("[MOTOR_CTRL_TASK] motor_control_task_init() is deprecated, "
-                 "use motor_link_task_init() instead\n");
+    LOG_W("motor_ctrl", "motor_control_task_init() 已弃用, 请使用 motor_link_task_init()");
 }
 
 /*
@@ -299,7 +298,7 @@ void motor_control_task_poll(void)
     /* 1. 检查 CAN 总线状态 */
     drv_can_state_t bus_state = drv_can_get_state(s_can_ctx);
     if (bus_state == DRV_CAN_STATE_BUS_OFF) {
-        printf("[MOTOR_CTRL_TASK] BUS-OFF, recovering...\n");
+        LOG_W("motor_ctrl", "CAN 总线关闭, 正在恢复...");
         drv_can_recover(s_can_ctx);
         s_last_heartbeat_ms = now;
         s_ep_warned = false;
@@ -307,7 +306,7 @@ void motor_control_task_poll(void)
     }
     if (bus_state == DRV_CAN_STATE_ERROR_PASSIVE) {
         if (!s_ep_warned) {
-            printf("[MOTOR_CTRL_TASK] WARNING: error-passive\n");
+            LOG_W("motor_ctrl", "CAN 总线错误被动");
             s_ep_warned = true;
         }
     } else {

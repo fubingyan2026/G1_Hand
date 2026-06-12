@@ -36,6 +36,7 @@ sdk_app_src(user_app/app_main.c)
 # --- 任务模块 (user_app/tasks) ---
 sdk_app_src(user_app/tasks/uart_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
+sdk_app_src(user_app/tasks/log_task.c)
 sdk_app_src(user_app/tasks/finger_task.c)
 sdk_app_src(user_app/tasks/motor_control_task.c)
 sdk_app_src(user_app/tasks/motor_link_task.c)
@@ -53,11 +54,14 @@ sdk_app_src(middlewares/fsm/fsm.c)
 # --- 中间件：协议工具 (middlewares/protocol_tools) ---
 sdk_app_src(middlewares/protocol_tools/protocol_parser.c)
 sdk_app_src(middlewares/protocol_tools/protocol_packer.c)
+# --- 中间件：日志模块 (middlewares/log) ---
+sdk_app_src(middlewares/log/log.c)
 
 # --- 设备驱动层 (drivers/device_driver) ---
 sdk_app_src(drivers/device_driver/drv_rs485.c)
 sdk_app_src(drivers/device_driver/drv_led.c)
 sdk_app_src(drivers/device_driver/drv_can.c)
+sdk_app_src(drivers/device_driver/drv_log_uart.c)
 
 # --- BSP 层 (drivers/bsp) ---
 sdk_app_src(drivers/bsp/bsp_uart.c)
@@ -82,6 +86,7 @@ target_include_directories(app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/utils
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/fsm
     ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/protocol_tools
+    ${CMAKE_CURRENT_SOURCE_DIR}/middlewares/log
 
     # BSP 层
     ${CMAKE_CURRENT_SOURCE_DIR}/drivers/device_driver
