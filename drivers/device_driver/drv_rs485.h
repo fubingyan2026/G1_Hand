@@ -44,8 +44,8 @@ typedef enum {
  * 默认配置
  * -------------------------------------------------------------------------- */
 
-#define RS485_DEFAULT_BAUDRATE (115200)
-#define RS485_RX_IDLE_THRESHOLD 10U /**< 接收空闲阈值（位时间） */
+#define RS485_DEFAULT_BAUDRATE (2000000)
+#define RS485_RX_IDLE_THRESHOLD 50U /**< 接收空闲阈值（位时间） */
 #define RS485_RX_CIRC_BUF_SIZE 128U /**< 每端口 DMA 环形缓冲区大小 */
 #define RS485_RX_RING_BUF_SIZE 256U /**< 每端口接收环形缓冲区大小 */
 

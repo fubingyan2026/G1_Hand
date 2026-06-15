@@ -292,6 +292,15 @@ void bsp_uart_init(bsp_uart_config_t* cfg)
     inst->rx_descriptors[1].linked_ptr = core_local_mem_to_sys_address(
         BOARD_RUNNING_CORE, (uint32_t)&inst->rx_descriptors[0]);
 
+    /* 刷新描述符 D-Cache，确保 DMA 读到最新的 linked_ptr 环（防止缓存行滞后导致链表断裂） */
+    {
+        uint32_t desc_align_start = HPM_L1C_CACHELINE_ALIGN_DOWN(
+            (uint32_t)&inst->rx_descriptors[0]);
+        uint32_t desc_align_end = HPM_L1C_CACHELINE_ALIGN_UP(
+            (uint32_t)&inst->rx_descriptors[0] + sizeof(inst->rx_descriptors));
+        l1c_dc_flush(desc_align_start, desc_align_end - desc_align_start);
+    }
+
     /* 使能 UART 空闲检测中断 */
     intc_m_enable_irq_with_priority(cfg->irq_num, 1);
 
@@ -412,8 +421,40 @@ void bsp_uart_start_rx_dma(bsp_uart_config_t* cfg)
         return;
     }
 
-    cfg->dma_controller->CHCTRL[cfg->rx_dma_ch].LLPOINTER = core_local_mem_to_sys_address(BOARD_RUNNING_CORE,
-        (uint32_t)&inst->rx_descriptors[0]);
+    /*
+     * RS-485 半双工：TX 期间接收器禁用，DMA 可能捕获噪声数据。
+     * 必须完整复位通道 —— disable → clear_status → invalidate → flush_desc → restart。
+     * 参照 uart0_rx_task 模式，但 uart0 从不重启（circle 永远运行），
+     * RS-485 每次 TX 完成后需重新初始化 RX DMA。
+     */
+
+    /* 1. 停掉当前通道 */
+    dma_disable_channel(cfg->dma_controller, cfg->rx_dma_ch);
+
+    /* 2. 清除残留传输状态（TC/Error/Abort），防止干扰后续传输 */
+    dma_clear_transfer_status(cfg->dma_controller, cfg->rx_dma_ch);
+
+    /* 3. 使 DMA 缓冲区 D-Cache 失效（清除 TX 期间捕获的噪声/残留数据） */
+    {
+        uint32_t align_start = HPM_L1C_CACHELINE_ALIGN_DOWN(
+            (uint32_t)cfg->rx_circ_buf);
+        uint32_t align_end = HPM_L1C_CACHELINE_ALIGN_UP(
+            (uint32_t)cfg->rx_circ_buf + cfg->rx_circ_buf_size);
+        l1c_dc_invalidate(align_start, align_end - align_start);
+    }
+
+    /* 4. 刷新描述符 D-Cache，确保 DMA 读到最新的 linked_ptr 环 */
+    {
+        uint32_t align_start = HPM_L1C_CACHELINE_ALIGN_DOWN(
+            (uint32_t)&inst->rx_descriptors[0]);
+        uint32_t align_end = HPM_L1C_CACHELINE_ALIGN_UP(
+            (uint32_t)&inst->rx_descriptors[0] + sizeof(inst->rx_descriptors));
+        l1c_dc_flush(align_start, align_end - align_start);
+    }
+
+    /* 5. 重新加载第一个描述符并启动 circle DMA */
+    cfg->dma_controller->CHCTRL[cfg->rx_dma_ch].LLPOINTER = core_local_mem_to_sys_address(
+        BOARD_RUNNING_CORE, (uint32_t)&inst->rx_descriptors[0]);
     dma_enable_channel(cfg->dma_controller, cfg->rx_dma_ch);
 }
 

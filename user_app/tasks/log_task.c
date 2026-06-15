@@ -6,11 +6,12 @@
 
 /**
  * @file    log_task.c
- * @brief   日志输出任务实现
+ * @brief   UART0 日志输出 + 接收任务实现
  *
  * 胶合 middlewares/log 模块与 drv_log_uart 驱动：
- * - 初始化阶段：配置并启动 log 模块和 UART0 DMA 驱动
- * - 轮询阶段：从 log 模块 kfifo 中取出格式化日志，通过 UART0 DMA 发出
+ * - 初始化阶段：配置并启动 log 模块和 UART0 DMA 驱动（TX + RX）
+ * - 轮询阶段：TX — 从 log 模块 kfifo 取出格式化日志通过 UART0 DMA 发出
+ *             RX — 从 drv_log_uart 接收 FIFO 取出数据并打印
  */
 
 /* Includes ------------------------------------------------------------------*/
@@ -56,6 +57,7 @@ void log_task_init(void)
     drv_log_uart_config_t uart_cfg = {
         .baudrate = DRV_LOG_UART_DEFAULT_BAUDRATE,
         .tx_dma_ch = DRV_LOG_UART_DEFAULT_TX_DMA_CH,
+        .rx_dma_ch = DRV_LOG_UART_DEFAULT_RX_DMA_CH,
     };
     drv_log_uart_init(&s_log_uart_ctx, &uart_cfg);
 }
@@ -69,10 +71,9 @@ void log_task_init(void)
  */
 void log_task_poll(void)
 {
-    /* 更新 TX DMA 完成状态 */
+    /* ── TX：更新 DMA 完成状态，发送待输出日志 ── */
     drv_log_uart_poll(&s_log_uart_ctx);
 
-    /* 若 DMA 空闲，检查日志模块是否有数据待发送 */
     if (!drv_log_uart_is_tx_busy(&s_log_uart_ctx)) {
         uint32_t log_len = log_tx_len();
         if (log_len > 0) {
@@ -83,6 +84,15 @@ void log_task_poll(void)
             if (actual > 0) {
                 drv_log_uart_send(&s_log_uart_ctx, s_tx_buf, actual);
             }
+        }
+    }
+
+    /* ── RX：从驱动层接收 FIFO 取出数据并打印 ── */
+    {
+        uint8_t rx_buf[64];
+        uint32_t rx_len = drv_log_uart_rx_read(rx_buf, sizeof(rx_buf));
+        if (rx_len > 0) {
+            log_hexdump("UART0", rx_buf, rx_len);
         }
     }
 }
