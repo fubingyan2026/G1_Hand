@@ -34,7 +34,7 @@ project(G1_Hand)
 sdk_app_src(user_app/app_main.c)
 
 # --- 任务模块 (user_app/tasks) ---
-sdk_app_src(user_app/tasks/uart_task.c)
+sdk_app_src(user_app/tasks/rs485_sample_task.c)
 sdk_app_src(user_app/tasks/led_task.c)
 sdk_app_src(user_app/tasks/log_task.c)
 sdk_app_src(user_app/tasks/finger_task.c)

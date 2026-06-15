@@ -31,12 +31,6 @@ extern "C" {
 #endif
 
 /* --------------------------------------------------------------------------
- * 默认超时
- * -------------------------------------------------------------------------- */
-
-#define BSP_UART_DEFAULT_TIMEOUT_MS 1000U /**< 默认超时时间（毫秒） */
-
-/* --------------------------------------------------------------------------
  * 回调类型
  * -------------------------------------------------------------------------- */
 
@@ -97,39 +91,7 @@ typedef struct {
 void bsp_uart_init(bsp_uart_config_t* cfg);
 
 /* ======================================================================
- * 阻塞模式收发（无 DMA，逐字节轮询）
- * ====================================================================== */
-
-/**
- * @brief 阻塞发送（无 DMA）
- *
- * 逐字节轮询 LSR.THRE 发送，适用于短调试信息。
- *
- * @param cfg        UART 配置
- * @param data       数据缓冲区
- * @param len        字节数
- * @param timeout_ms 超时时间（毫秒），0 表示无限等待
- * @return           status_success / status_timeout
- */
-hpm_stat_t bsp_uart_send_blocking(bsp_uart_config_t* cfg,
-    const uint8_t* data, uint32_t len, uint32_t timeout_ms);
-
-/**
- * @brief 阻塞接收（无 DMA）
- *
- * 逐字节轮询 LSR.DR 接收，适用于短应答。
- *
- * @param cfg        UART 配置
- * @param data       接收缓冲区
- * @param len        期望接收字节数
- * @param timeout_ms 超时时间（毫秒），0 表示无限等待
- * @return           status_success / status_timeout
- */
-hpm_stat_t bsp_uart_recv_blocking(bsp_uart_config_t* cfg,
-    uint8_t* data, uint32_t len, uint32_t timeout_ms);
-
-/* ======================================================================
- * DMA 发送（非阻塞 / 阻塞）
+ * DMA 发送
  * ====================================================================== */
 
 /**
@@ -146,20 +108,6 @@ hpm_stat_t bsp_uart_recv_blocking(bsp_uart_config_t* cfg,
 hpm_stat_t bsp_uart_send_dma(bsp_uart_config_t* cfg,
     const uint8_t* data, uint32_t len);
 
-/**
- * @brief DMA 阻塞发送
- *
- * 启动 DMA → 自旋等待完成 → 返回。
- * 便捷封装，等价于 bsp_uart_send_dma() + 自旋。
- *
- * @param cfg  UART 配置
- * @param data 数据缓冲区
- * @param len  字节数
- * @return     status_success / status_fail
- */
-hpm_stat_t bsp_uart_send_dma_blocking(bsp_uart_config_t* cfg,
-    const uint8_t* data, uint32_t len);
-
 /* ======================================================================
  * 发送状态
  * ====================================================================== */
@@ -171,15 +119,6 @@ hpm_stat_t bsp_uart_send_dma_blocking(bsp_uart_config_t* cfg,
  * @return    true 表示 DMA 仍在传输中
  */
 bool bsp_uart_is_tx_busy(bsp_uart_config_t* cfg);
-
-/**
- * @brief 等待 UART TX 移位寄存器完全清空
- *
- * 阻塞直到 TEMT 标志置位（FIFO + 移位寄存器全空）。
- *
- * @param cfg UART 配置
- */
-void bsp_uart_flush(bsp_uart_config_t* cfg);
 
 /* ======================================================================
  * 回调管理

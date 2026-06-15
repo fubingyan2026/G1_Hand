@@ -18,6 +18,7 @@
 #include "led_task.h"
 #include "log_task.h"
 #include "motor_link_task.h"
+#include "rs485_sample_task.h"
 
 int main(void)
 {
@@ -45,6 +46,7 @@ int main(void)
     /* 初始化 LED 闪烁任务（250ms 循环闪烁） */
     led_task_init();
 
+    //rs485_sample_task_init();
     /* 初始化完整电机数据链路（finger 服务层 → RS-485 传输层 → finger 实例
      * → CAN-FD 传输层 → motor_control 服务层 → motor_control 实例 → 回调连线） */
     motor_link_task_init();
@@ -54,6 +56,7 @@ int main(void)
         led_task_poll();
         log_task_poll();
         motor_link_task_poll();
+        //rs485_sample_task_poll();
     }
 
     return 0;

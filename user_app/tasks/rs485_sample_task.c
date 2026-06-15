@@ -5,15 +5,15 @@
  */
 
 /**
- * @file    uart_task.c
- * @brief   RS-485 DMA 收发任务
+ * @file    rs485_sample_task.c
+ * @brief   RS-485 DMA 收发示例任务
  *
- * 演示 RS-485 驱动的完整用法：
- * - 初始化三路 RS-485 端口
- * - 外部端口 (UART8) 做回环测试 — 收到数据后原样返回
- * - 电机端口 (UART14/15) 接收数据存入队列，应用层轮询读出
+ * 演示 RS-485 驱动的用法：
+ * - 初始化指定 RS-485 端口
+ * - 回环测试 — 收到数据后原样返回
+ * - 周期性发送测试消息
  */
-#include "uart_task.h"
+#include "rs485_sample_task.h"
 #include "board.h"
 #include "drv_rs485.h"
 #include "hpm_clock_drv.h"
@@ -55,29 +55,28 @@ static void on_rx_frame(rs485_port_t port, uint8_t* data, uint32_t len)
  * 任务入口
  * -------------------------------------------------------------------------- */
 
-void uart_task_init(void)
+void rs485_sample_task_init(void)
 {
-    LOG_I("uart", "RS-485 DMA 收发任务启动");
+    LOG_I("rs485_sample", "RS-485 DMA 示例任务启动");
 
-    /* 1. 初始化全部三路 RS-485 端口 */
-    LOG_I("uart", "初始化 RS-485 端口...");
+    /* 1. 初始化测试端口 */
+    LOG_I("rs485_sample", "初始化 RS-485 端口...");
     rs485_init(TEST_PORT);
 
     /* 2. 注册接收回调 */
     rs485_set_rx_callback(TEST_PORT, on_rx_frame);
-    LOG_I("uart", "三路端口初始化完成, DMA 环形接收已启动");
+    LOG_I("rs485_sample", "端口初始化完成, DMA 环形接收已启动");
 }
 
 /**
- * @brief RS-485 收发主循环
+ * @brief RS-485 示例任务主循环
  *
- * 在主循环中周期性调用。轮询各端口是否有新数据到达，
- * 以及检查发送管线状态。
+ * 在主循环中周期性调用。轮询端口是否有新数据到达，
+ * 以及周期性发送测试消息。
  */
-void uart_task_poll(void)
+void rs485_sample_task_poll(void)
 {
-    /* 轮询各端口接收数据 */
-
+    /* 轮询端口接收数据 */
     uint32_t avail = rs485_rx_available(TEST_PORT);
     if (avail > 0) {
         uint8_t buf[128];
@@ -87,18 +86,18 @@ void uart_task_poll(void)
     }
 
     /*
-     * 周期性检查发送管线状态（可选：上报/日志）。
+     * 周期性发送测试消息。
      * rs485_is_tx_idle() 返回 true 表示 DMA 空闲。
      */
     static uint32_t s_tick = 0;
     s_tick++;
-    if (s_tick >= 10000) {
+    if (s_tick >= 200000) {
         s_tick = 0;
         hpm_stat_t stat = rs485_send(TEST_PORT, s_test_msg, sizeof(s_test_msg) - 1);
         if (stat == status_success) {
-            LOG_D("uart", "测试消息发送成功");
+            LOG_D("rs485_sample", "测试消息发送成功");
         } else {
-            LOG_E("uart", "测试消息发送失败, 状态码=%d", stat);
+            LOG_E("rs485_sample", "测试消息发送失败, 状态码=%d", stat);
         }
     }
 }

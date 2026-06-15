@@ -44,7 +44,7 @@ typedef enum {
  * 默认配置
  * -------------------------------------------------------------------------- */
 
-#define RS485_DEFAULT_BAUDRATE (2000000)
+#define RS485_DEFAULT_BAUDRATE (2000000) /**< 默认2Mbps，115200在COMMON时钟源下分频不准 */
 #define RS485_RX_IDLE_THRESHOLD 50U /**< 接收空闲阈值（位时间） */
 #define RS485_RX_CIRC_BUF_SIZE 128U /**< 每端口 DMA 环形缓冲区大小 */
 #define RS485_RX_RING_BUF_SIZE 256U /**< 每端口接收环形缓冲区大小 */
@@ -118,6 +118,16 @@ hpm_stat_t rs485_send(rs485_port_t port, const uint8_t* data, uint32_t len);
  * @return     true 表示空闲
  */
 bool rs485_is_tx_idle(rs485_port_t port);
+
+/**
+ * @brief TX 收尾轮询：检查移位寄存器是否排空并拉低 DE
+ *
+ * 在主循环中调用。当 DMA 完成 (tx_dma_done) 且 TEMT 置位时拉低 DE。
+ * 非阻塞，每次 poll 快速返回。
+ *
+ * @param port 端口
+ */
+void rs485_poll_tx(rs485_port_t port);
 
 #ifdef __cplusplus
 }

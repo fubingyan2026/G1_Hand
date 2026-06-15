@@ -23,9 +23,6 @@
 #define BSP_UART_DESC_COUNT 2
 #define BSP_UART_DESC_ALIGN __attribute__((aligned(8)))
 
-/* 轮询间隔（微秒），用于阻塞收发超时轮询 */
-#define BSP_UART_POLL_INTERVAL_US 10U
-
 /**
  * @brief 实例结构体（内部使用）
  */
@@ -314,56 +311,6 @@ void bsp_uart_init(bsp_uart_config_t* cfg)
     bsp_uart_start_rx_dma(cfg);
 }
 
-hpm_stat_t bsp_uart_send_blocking(bsp_uart_config_t* cfg,
-    const uint8_t* data, uint32_t len, uint32_t timeout_ms)
-{
-    if (!cfg || !data || len == 0) {
-        return status_fail;
-    }
-
-    uint32_t elapsed_us = 0;
-    uint32_t timeout_us = timeout_ms * 1000U;
-
-    for (uint32_t i = 0; i < len; i++) {
-        /* 等待 TX FIFO 有空位 */
-        while (!(cfg->base->LSR & UART_LSR_THRE_MASK)) {
-            if (timeout_ms > 0 && elapsed_us >= timeout_us) {
-                return status_timeout;
-            }
-            clock_cpu_delay_us(BSP_UART_POLL_INTERVAL_US);
-            elapsed_us += BSP_UART_POLL_INTERVAL_US;
-        }
-        cfg->base->THR = UART_THR_THR_SET(data[i]);
-    }
-
-    return status_success;
-}
-
-hpm_stat_t bsp_uart_recv_blocking(bsp_uart_config_t* cfg,
-    uint8_t* data, uint32_t len, uint32_t timeout_ms)
-{
-    if (!cfg || !data || len == 0) {
-        return status_fail;
-    }
-
-    uint32_t elapsed_us = 0;
-    uint32_t timeout_us = timeout_ms * 1000U;
-
-    for (uint32_t i = 0; i < len; i++) {
-        /* 等待 RX 数据就绪 */
-        while (!(cfg->base->LSR & UART_LSR_DR_MASK)) {
-            if (timeout_ms > 0 && elapsed_us >= timeout_us) {
-                return status_timeout;
-            }
-            clock_cpu_delay_us(BSP_UART_POLL_INTERVAL_US);
-            elapsed_us += BSP_UART_POLL_INTERVAL_US;
-        }
-        data[i] = (uint8_t)(cfg->base->RBR & UART_RBR_RBR_MASK);
-    }
-
-    return status_success;
-}
-
 hpm_stat_t bsp_uart_send_dma(bsp_uart_config_t* cfg,
     const uint8_t* data, uint32_t len)
 {
@@ -376,21 +323,6 @@ hpm_stat_t bsp_uart_send_dma(bsp_uart_config_t* cfg,
     return bsp_uart_start_tx_dma(cfg, data, len);
 }
 
-hpm_stat_t bsp_uart_send_dma_blocking(bsp_uart_config_t* cfg,
-    const uint8_t* data, uint32_t len)
-{
-    hpm_stat_t stat = bsp_uart_send_dma(cfg, data, len);
-    if (stat != status_success) {
-        return stat;
-    }
-
-    while (bsp_uart_is_tx_busy(cfg)) {
-        /* 自旋等待 DMA 完成 */
-    }
-
-    return status_success;
-}
-
 bool bsp_uart_is_tx_busy(bsp_uart_config_t* cfg)
 {
     bsp_uart_instance_t* inst = find_instance(cfg->base);
@@ -400,11 +332,6 @@ bool bsp_uart_is_tx_busy(bsp_uart_config_t* cfg)
 
     /* tx_done 由 HDMA ISR 设置 */
     return !inst->tx_done;
-}
-
-void bsp_uart_flush(bsp_uart_config_t* cfg)
-{
-    uart_flush(cfg->base);
 }
 
 void bsp_uart_set_tx_callback(bsp_uart_config_t* cfg,

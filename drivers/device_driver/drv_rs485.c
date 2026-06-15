@@ -69,7 +69,8 @@ typedef struct {
     /* 发送 — 零拷贝 DMA */
     const uint8_t* tx_buf; /* 当前 DMA 源缓冲区（NULL = 空闲） */
     uint32_t tx_len; /* 当前传输字节数 */
-    bool tx_busy; /* DMA 传输进行中 */
+    bool tx_busy; /* 发送流程进行中 */
+    volatile bool tx_dma_done; /* HDMA ISR 置位：DMA 搬运完毕 */
 } rs485_port_ctx_t;
 
 static rs485_port_ctx_t s_ports[RS485_PORT_MAX];
@@ -182,7 +183,7 @@ void rs485_init(rs485_port_t port)
     ctx->uart_cfg.rx_callback = rs485_rx_callback;
     ctx->rx_cb = NULL;
 
-    /* 注册 TX 完成回调（HDMA ISR → 拉低 DE） */
+    /* DMA 完成回调：标记 tx_dma_done，主循环轮询 TEMT 后拉低 DE */
     bsp_uart_set_tx_callback(&ctx->uart_cfg, rs485_tx_dma_done,
         (void*)(uintptr_t)port);
 
@@ -238,6 +239,10 @@ uint32_t rs485_rx_available(rs485_port_t port)
 {
     if (port >= RS485_PORT_MAX)
         return 0;
+
+    /* 每次查询接收数据时顺手收尾 TX — 主循环高频调用，DE 及时拉低 */
+    rs485_poll_tx(port);
+
     return kfifo_len(&s_ports[port].rx_fifo);
 }
 
@@ -253,31 +258,39 @@ uint32_t rs485_rx_read(rs485_port_t port, uint8_t* out, uint32_t max_len)
  * ====================================================================== */
 
 /**
- * @brief HDMA ISR 回调：DMA 发送完成
+ * @brief HDMA ISR 回调：DMA 搬运完毕
  *
- * 收尾：flush UART 移位寄存器 + 拉低 DE + 标记空闲。
- * 调用者通过 rs485_send_dma() 传入的 data 缓冲区此时可以安全复用。
+ * 仅标记 tx_dma_done，实际收尾由 TX 空闲回调完成。
+ * 分离两个事件的原因：DMA TC 表示 FIFO 接收完毕，
+ * TX 空闲表示移位寄存器已排空 + 线空闲，两者之间可能差数毫秒。
  */
 static void rs485_tx_dma_done(void* user_data)
 {
     rs485_port_t port = (rs485_port_t)(uintptr_t)user_data;
+    s_ports[port].tx_dma_done = true;
+}
+
+/**
+ * @brief TX 收尾轮询：检查 TEMT 并拉低 DE
+ *
+ * 在主循环中调用，非阻塞。当 DMA 完成且移位寄存器排空 (TEMT) 时拉低 DE。
+ * TEMT = FIFO 空 + 移位寄存器空，硬件直接反映真实发送状态。
+ */
+void rs485_poll_tx(rs485_port_t port)
+{
     rs485_port_ctx_t* ctx = &s_ports[port];
 
-    /* 等待移位寄存器排空，然后拉低 DE 回到接收模式 */
-    bsp_uart_flush(&ctx->uart_cfg);
-    bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
+    if (!ctx->tx_busy || !ctx->tx_dma_done) {
+        return;
+    }
 
-    /*
-     * DE 拉低后接收器重新启用。清空 TX 期间 DMA 捕获的噪声数据
-     * （SIT3088ETK 在高阻态下可能产生虚假 0x00），
-     * 重新启动 RX DMA 以准备接收电机应答。
-     */
-    // kfifo_reset(&ctx->rx_fifo);
-    bsp_uart_start_rx_dma(&ctx->uart_cfg);
-
-    ctx->tx_busy = false;
-    ctx->tx_buf = NULL;
-    ctx->tx_len = 0;
+    if (ctx->uart_cfg.base->LSR & UART_LSR_TEMT_MASK) {
+        bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
+        ctx->tx_busy = false;
+        ctx->tx_dma_done = false;
+        ctx->tx_buf = NULL;
+        ctx->tx_len = 0;
+    }
 }
 
 hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len)
@@ -288,6 +301,9 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len)
 
     rs485_port_ctx_t* ctx = &s_ports[port];
 
+    /* 先收尾上一次发送：若 TEMT 已置位则拉低 DE */
+    rs485_poll_tx(port);
+
     /* DMA 忙则拒绝（RS-485 半双工：TX 期间不应有新请求） */
     if (ctx->tx_busy) {
         return status_fail;
@@ -297,6 +313,7 @@ hpm_stat_t rs485_send_dma(rs485_port_t port, const uint8_t* data, uint32_t len)
     ctx->tx_buf = data;
     ctx->tx_len = len;
     ctx->tx_busy = true;
+    ctx->tx_dma_done = false; /* 保险：TX 空闲回调必须等 DMA 先完成 */
 
     /* 刷 D-Cache 确保 DMA 读取到 CPU 写入的最新数据 */
     {
@@ -325,6 +342,9 @@ bool rs485_is_tx_idle(rs485_port_t port)
 {
     if (port >= RS485_PORT_MAX)
         return true;
+
+    /* 先收尾：若 DMA 完成且移位寄存器已排空，拉低 DE */
+    rs485_poll_tx(port);
 
     return !s_ports[port].tx_busy;
 }
