@@ -11,6 +11,7 @@
 #include "led.h"
 
 #include <string.h>
+#include "kfifo.h"
 
 /* Private macros ------------------------------------------------------------*/
 #define LED_CMD_FIFO_SIZE 4 /**< 异步命令队列深度（必须为2的幂） */
@@ -278,7 +279,7 @@ void led_deinit(void)
         led_handle_t* h = clist_entry(pos, led_handle_t, node);
         clist_del(pos);
         if (h->cmd_fifo)
-            kfifo_free((kfifo_t*)h->cmd_fifo);
+            kfifo_reset((kfifo_t*)h->cmd_fifo);
         if (!h->is_static)
             free(h);
     }
@@ -387,7 +388,7 @@ led_error_t led_unregister(const char* name)
         if (strcmp(h->config.name, name) == 0) {
             clist_del(&h->node);
             if (h->cmd_fifo)
-                kfifo_free((kfifo_t*)h->cmd_fifo);
+                kfifo_reset((kfifo_t*)h->cmd_fifo);
             if (!h->is_static)
                 free(h);
             return LED_OK;

@@ -664,7 +664,7 @@
 #define BOARD_SHOW_CLOCK 0
 #endif
 #ifndef BOARD_SHOW_BANNER
-#define BOARD_SHOW_BANNER 1
+#define BOARD_SHOW_BANNER 0
 #endif
 
 /* FreeRTOS Definitions */

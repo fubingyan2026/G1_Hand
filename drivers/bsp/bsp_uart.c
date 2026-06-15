@@ -17,6 +17,7 @@
 #include "hpm_iomux.h"
 #include "hpm_soc.h"
 #include <string.h>
+#include "hpm_l1c_drv.h"
 
 #define BSP_UART_MAX_INSTANCES 4
 #define BSP_UART_DESC_COUNT 2

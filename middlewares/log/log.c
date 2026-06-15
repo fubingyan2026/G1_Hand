@@ -75,12 +75,6 @@ static log_config_t s_config = {
 /* Private function prototypes -----------------------------------------------*/
 
 /**
- * @brief 默认时间戳获取函数
- * @return 递增计数器值（毫秒级近似）
- */
-static uint32_t log_default_timestamp(void);
-
-/**
  * @brief 格式化并输出日志到 FIFO
  * @param level 日志级别
  * @param tag 日志标签
@@ -377,18 +371,6 @@ void log_assert_failed(const char* func, uint32_t line)
     }
 }
 
-/* Private functions ---------------------------------------------------------*/
-
-/**
- * @brief 默认时间戳获取函数
- * @return 递增计数器值
- */
-static uint32_t log_default_timestamp(void)
-{
-    static uint32_t counter = 0;
-    return counter++;
-}
-
 /**
  * @brief 格式化并输出日志到 FIFO
  * @param level 日志级别
@@ -422,11 +404,11 @@ static log_error_t log_format_output(log_level_t level, const char* tag,
     offset += snprintf(buf + offset, buf_size - offset, "%s (", level_char);
 
     if (s_config.enable_timestamp) {
-        uint32_t timestamp = 0;
+        static uint32_t timestamp = 0;
         if (s_config.get_timestamp_cb) {
             timestamp = s_config.get_timestamp_cb();
         } else {
-            timestamp = log_default_timestamp();
+            timestamp++;
         }
         offset += snprintf(buf + offset, buf_size - offset, "%lu",
             (unsigned long)timestamp);

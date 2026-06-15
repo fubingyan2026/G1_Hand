@@ -18,6 +18,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include "log.h"
 
 /**
  * @brief 初始化日志任务

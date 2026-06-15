@@ -101,7 +101,7 @@ typedef struct {
 /**
  * @brief 断言宏
  */
-#define LOG_ASSERT(expr)// ((expr) ? (void)0 : log_assert_failed(__func__, __LINE__))
+#define LOG_ASSERT(expr) ((expr) ? (void)0 : log_assert_failed(__func__, __LINE__))
 
 /**
  * @brief 日志输出宏（ESP32风格）
