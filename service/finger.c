@@ -19,6 +19,8 @@
 
 #include <string.h>
 
+#include "log.h"
+
 /* Private constants ---------------------------------------------------------*/
 
 /** @brief 指令类型：读取控制表 */
@@ -328,6 +330,8 @@ static finger_error_t finger_parse_response(const finger_handle_t* handle,
         if (len >= 8) {
             /* cast away const: only used internally to cache response data */
             *(uint16_t*)&((finger_handle_t*)handle)->position = (uint16_t)(((uint16_t)frame[6] << 8) | frame[7]);
+            LOG_I("finger", "ID=0x%02X 位置=%u°", handle->config.motor_id,
+                (unsigned int)((finger_handle_t*)handle)->position);
         }
         break;
 
@@ -339,6 +343,9 @@ static finger_error_t finger_parse_response(const finger_handle_t* handle,
             if (status <= FINGER_MODE_SPEED_POSITION) {
                 *(finger_mode_t*)&((finger_handle_t*)handle)->mode = (finger_mode_t)status;
             }
+            LOG_I("finger", "ID=0x%02X 状态=0x%02X 模式=%d",
+                handle->config.motor_id, status,
+                (int)((finger_handle_t*)handle)->mode);
         }
         break;
 
@@ -346,11 +353,17 @@ static finger_error_t finger_parse_response(const finger_handle_t* handle,
         /* 输出轴角度，占 2 字节，单位 0.0555° */
         if (len >= 8) {
             *(uint32_t*)&((finger_handle_t*)handle)->output_angle_raw = (uint32_t)(((uint16_t)frame[6] << 8) | frame[7]);
+            LOG_I("finger", "ID=0x%02X 输出轴角度=0x%04lX (%.1f°)",
+                handle->config.motor_id,
+                (unsigned long)((finger_handle_t*)handle)->output_angle_raw,
+                (double)((finger_handle_t*)handle)->output_angle_raw * 0.0555);
         }
         break;
 
     default:
         /* 其他控制表：写确认或控制确认，无需额外处理 */
+        LOG_I("finger", "ID=0x%02X ctl=0x%02X cmd=0x%02X 应答确认",
+            handle->config.motor_id, ctl, cmd);
         break;
     }
 

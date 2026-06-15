@@ -255,6 +255,14 @@ static fsm_state_t port_tx_waiting_handler(fsm_t* ctx)
             FINGER_TASK_RESPONSE_TIMEOUT_MS)) {
         port_ctx->timeout_count++;
 
+        if (port_ctx->current_motor) {
+            LOG_W("finger", "端口%d 电机=0x%02X 应答超时(cmd=%d, 累计=%u)",
+                port_ctx->port,
+                (unsigned int)port_ctx->current_motor->config.motor_id,
+                (int)port_ctx->current_motor->pending_cmd,
+                (unsigned int)port_ctx->timeout_count);
+        }
+
         /* 清除电机待发送状态，避免同一帧反复重发 */
         if (port_ctx->current_motor) {
             finger_cmd_type_t timed_out_cmd = port_ctx->current_motor->pending_cmd;
@@ -375,28 +383,6 @@ static void finger_task_process_rx(port_ctx_t* port_ctx)
             (void)protocol_parser_clear(&port_ctx->parser);
         }
     }
-
-    /*
-     * 诊断：绕过 DMA，直接轮询 UART RBR 寄存器。
-     * UART 收到数据 → DR=1 → 直接读 FIFO 中的字节并打印。
-     * 这完全绕过 DMA、缓存、kfifo，直接验证 UART 外设本身。
-     */
-    {
-        UART_Type* uart_base = (port_ctx->port == RS485_PORT_MOTOR1) ? HPM_UART15
-            : (port_ctx->port == RS485_PORT_MOTOR2) ? HPM_UART14
-            : HPM_UART8;
-        uint32_t lsr = uart_base->LSR;
-        if (lsr & UART_LSR_DR_MASK) {
-            uint8_t rbr[8];
-            int n = 0;
-            while ((uart_base->LSR & UART_LSR_DR_MASK) && n < 8) {
-                rbr[n++] = (uint8_t)(uart_base->RBR & UART_RBR_RBR_MASK);
-            }
-            LOG_W("finger", "UART直读 端口%d: LSR=0x%08lX 收到%d字节",
-                port_ctx->port, (unsigned long)lsr, n);
-            LOG_HEXDUMP("finger", rbr, (uint32_t)n);
-        }
-    }
 }
 
 /**
@@ -432,7 +418,11 @@ static void finger_task_dispatch_response(port_ctx_t* port_ctx,
     port_ctx->rx_count++;
 
     /* 分发给电机服务层处理 */
-    (void)finger_process_response(motor, frame, len);
+    finger_error_t finger_err = finger_process_response(motor, frame, len);
+    if (finger_err != FINGER_OK) {
+        LOG_W("finger", "RX 端口%d 电机=0x%02X 解析失败: err=%d",
+            port_ctx->port, (unsigned int)motor_id, (int)finger_err);
+    }
 
     /* 如果当前正在等待此电机的应答，通过 FSM 切换回 IDLE */
     if (port_ctx->current_motor == motor) {
@@ -521,6 +511,10 @@ void finger_task_poll(void)
 
         if (parse_err == PROTOCOL_PARSER_OK) {
             finger_task_dispatch_response(ctx, frame_data, frame_len);
+        } else if (parse_err != PROTOCOL_PARSER_ERROR_INCOMPLETE) {
+            /* 解析失败：打印一次后清空 parser，丢弃坏数据避免反复重试 */
+            LOG_E("finger", "端口%d 解析错误: %d", ctx->port, (int)parse_err);
+            (void)protocol_parser_clear(&ctx->parser);
         }
 
         /* 4. 驱动发送 FSM */
