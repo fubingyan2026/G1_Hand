@@ -60,8 +60,8 @@ typedef struct {
     uint32_t de_port_idx;
     uint8_t de_pin_idx;
 
-    /* 接收 */
-    uint8_t rx_dma_buf[RS485_RX_CIRC_BUF_SIZE];
+    /* 接收 — 必须缓存行对齐，确保 l1c_dc_flush 不误伤相邻变量 */
+    uint8_t rx_dma_buf[RS485_RX_CIRC_BUF_SIZE] __attribute__((aligned(64)));
     uint8_t rx_ring_storage[RS485_RX_RING_BUF_SIZE];
     kfifo_t rx_fifo;
     rs485_rx_callback_t rx_cb;
@@ -158,6 +158,21 @@ void rs485_init(rs485_port_t port)
         return;
     }
 
+    /* 配置引脚复用 (TXD, RXD) */
+    HPM_IOC->PAD[ctx->uart_cfg.tx_ioc_pad].FUNC_CTL = ctx->uart_cfg.tx_ioc_func;
+    HPM_IOC->PAD[ctx->uart_cfg.rx_ioc_pad].FUNC_CTL = ctx->uart_cfg.rx_ioc_func;
+
+    /*
+     * 为 RX 引脚开启内部上拉，防止 RS-485 收发器在发送模式（DE=HIGH）
+     * 禁用接收器时 RO 引脚高阻态导致浮空。
+     *
+     * SIT3088ETK: DE=HIGH → 接收器禁用 → RO=高阻态
+     * 若无上拉，MCU 引脚浮空 → UART 读到连续 LOW → 虚假 0x00 字节
+     * PE=1 (上拉使能) + PS=1 (上拉) → 引脚保持 HIGH (空闲态)
+     */
+    HPM_IOC->PAD[ctx->uart_cfg.rx_ioc_pad].PAD_CTL |=
+        IOC_PAD_PAD_CTL_PE_MASK | IOC_PAD_PAD_CTL_PS_MASK;
+
     /* 通用配置 */
     ctx->uart_cfg.dma_controller = HPM_HDMA;
     ctx->uart_cfg.dmamux_controller = HPM_DMAMUX;
@@ -251,6 +266,14 @@ static void rs485_tx_dma_done(void* user_data)
     /* 等待移位寄存器排空，然后拉低 DE 回到接收模式 */
     bsp_uart_flush(&ctx->uart_cfg);
     bsp_gpio_write(ctx->de_port, ctx->de_port_idx, ctx->de_pin_idx, 0);
+
+    /*
+     * DE 拉低后接收器重新启用。清空 TX 期间 DMA 捕获的噪声数据
+     * （SIT3088ETK 在高阻态下可能产生虚假 0x00），
+     * 重新启动 RX DMA 以准备接收电机应答。
+     */
+    // kfifo_reset(&ctx->rx_fifo);
+    bsp_uart_start_rx_dma(&ctx->uart_cfg);
 
     ctx->tx_busy = false;
     ctx->tx_buf = NULL;

@@ -16,6 +16,7 @@
 #include "hpm_interrupt.h"
 #include "hpm_iomux.h"
 #include "hpm_soc.h"
+#include <string.h>
 
 #define BSP_UART_MAX_INSTANCES 4
 #define BSP_UART_DESC_COUNT 2
@@ -130,12 +131,47 @@ static void bsp_uart_rx_idle_handler(bsp_uart_instance_t* inst)
     if (uart_is_rxline_idle(cfg->base)) {
         uart_clear_rxline_idle_flag(cfg->base);
 
-        uint32_t remaining = dma_get_remaining_transfer_size(cfg->dma_controller,
+        /*
+         * 双路径 RX：
+         * 路径1 (DMA)：dma_get_remaining → 从 DMA 环形缓冲读
+         * 路径2 (直读)：直接轮询 UART RBR（当 DMA 未捕获数据时的后备）
+         *
+         * 若 UART RX FIFO 中仍有数据而 DMA 未搬走（DMAMUX 配置问题等），
+         * 路径2 直接读 RBR 确保数据不丢失。
+         */
+        uint32_t dma_remaining = dma_get_remaining_transfer_size(cfg->dma_controller,
             cfg->rx_dma_ch);
-        uint32_t rx_bytes = cfg->rx_circ_buf_size - remaining;
+        uint32_t dma_rx_bytes = cfg->rx_circ_buf_size - dma_remaining;
 
-        if (rx_bytes > 0 && cfg->rx_callback) {
-            cfg->rx_callback(cfg->rx_circ_buf, rx_bytes);
+        /* 路径2: 直读 UART RBR 中 DMA 未捕获的残留数据 */
+        uint8_t direct_buf[64];
+        uint32_t direct_len = 0;
+        while ((cfg->base->LSR & UART_LSR_DR_MASK) && direct_len < sizeof(direct_buf)) {
+            direct_buf[direct_len++] = (uint8_t)(cfg->base->RBR & UART_RBR_RBR_MASK);
+        }
+
+        /*
+         * 优先使用直读 RBR（绕过 DMA），仅当 RBR 空时才用 DMA 数据。
+         * DMA 搬回来的全是 0x00 而 RBR 有真实数据时，直读胜出。
+         *
+         * 注意：rx_callback (rs485_rx_callback) 通过 data 指针是否落在
+         * rx_dma_buf 范围内来识别端口。直读数据在栈上，必须先拷入 DMA 缓冲
+         * 区，否则回调中 ctx=NULL 导致数据被丢弃。
+         */
+        if (direct_len > 0) {
+            if (direct_len <= cfg->rx_circ_buf_size) {
+                memcpy(cfg->rx_circ_buf, direct_buf, direct_len);
+                if (cfg->rx_callback) {
+                    cfg->rx_callback(cfg->rx_circ_buf, direct_len);
+                }
+            }
+        } else if (dma_rx_bytes > 0 && dma_rx_bytes <= cfg->rx_circ_buf_size) {
+            uint32_t align_start = HPM_L1C_CACHELINE_ALIGN_DOWN((uint32_t)cfg->rx_circ_buf);
+            uint32_t align_end = HPM_L1C_CACHELINE_ALIGN_UP((uint32_t)cfg->rx_circ_buf + dma_rx_bytes);
+            l1c_dc_invalidate(align_start, align_end - align_start);
+            if (cfg->rx_callback) {
+                cfg->rx_callback(cfg->rx_circ_buf, dma_rx_bytes);
+            }
         }
 
         inst->rx_idle = true;

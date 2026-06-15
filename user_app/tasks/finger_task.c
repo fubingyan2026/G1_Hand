@@ -364,7 +364,7 @@ static void finger_task_process_rx(port_ctx_t* port_ctx)
 
     if (read_len > 0) {
         /* 打印原始 RX 数据 */
-        LOG_I("finger", "RX 端口%d 收到%u字节", port_ctx->port,
+        LOG_I("finger", "RX(DMA) 端口%d 收到%u字节", port_ctx->port,
             (unsigned int)read_len);
         LOG_HEXDUMP("finger", buf, read_len);
 
@@ -373,6 +373,28 @@ static void finger_task_process_rx(port_ctx_t* port_ctx)
         if (err != PROTOCOL_PARSER_OK) {
             /* 喂入失败（如 FIFO 溢出），清空解析器重来 */
             (void)protocol_parser_clear(&port_ctx->parser);
+        }
+    }
+
+    /*
+     * 诊断：绕过 DMA，直接轮询 UART RBR 寄存器。
+     * UART 收到数据 → DR=1 → 直接读 FIFO 中的字节并打印。
+     * 这完全绕过 DMA、缓存、kfifo，直接验证 UART 外设本身。
+     */
+    {
+        UART_Type* uart_base = (port_ctx->port == RS485_PORT_MOTOR1) ? HPM_UART15
+            : (port_ctx->port == RS485_PORT_MOTOR2) ? HPM_UART14
+            : HPM_UART8;
+        uint32_t lsr = uart_base->LSR;
+        if (lsr & UART_LSR_DR_MASK) {
+            uint8_t rbr[8];
+            int n = 0;
+            while ((uart_base->LSR & UART_LSR_DR_MASK) && n < 8) {
+                rbr[n++] = (uint8_t)(uart_base->RBR & UART_RBR_RBR_MASK);
+            }
+            LOG_W("finger", "UART直读 端口%d: LSR=0x%08lX 收到%d字节",
+                port_ctx->port, (unsigned long)lsr, n);
+            LOG_HEXDUMP("finger", rbr, (uint32_t)n);
         }
     }
 }

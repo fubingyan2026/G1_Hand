@@ -2,11 +2,11 @@
  * @file    log.c
  * @author  G1_Hand 项目组
  * @version V1.0.0
- * @date    2025-04-12
+ * @date    2026 6 12
  * @brief   日志模块实现（ESP32风格日志输出）
  * @attention
  *
- * Copyright (c) 2025 G1_Hand 项目组.
+ * Copyright (c) 2026 G1_Hand 项目组.
  * All rights reserved.
  *
  * This software is licensed under terms that can be found in the LICENSE file
